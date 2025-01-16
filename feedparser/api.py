@@ -4,7 +4,8 @@ import feedparser
 
 app = Flask(__name__)
 
-feedparser.USER_AGENT = "rssify/3.8 +https://burhanverse.eu.org/"
+# User-Agent
+feedparser.USER_AGENT = "rssify/3.9 +https://burhanverse.eu.org/"
 
 @app.route('/parse', methods=['GET'])
 def parse_rss():
@@ -13,10 +14,21 @@ def parse_rss():
         return jsonify({"error": "Missing 'url' parameter"}), 400
 
     try:
+        # Parse feed
         feed = feedparser.parse(rss_url)
         if feed.bozo:
             return jsonify({"error": "Invalid RSS feed format"}), 400
 
+        # Extract metadata
+        feed_metadata = {
+            "title": feed.feed.get("title", "No title"),
+            "link": feed.feed.get("link", "No link"),
+            "description": feed.feed.get("description", "No description"),
+            "language": feed.feed.get("language", "Unknown"),
+            "updated": feed.feed.get("updated", "No update date"),
+        }
+
+        # Extract entries
         items = []
         for entry in feed.entries:
             items.append({
@@ -24,13 +36,13 @@ def parse_rss():
                 "link": entry.get("link", "No link"),
                 "published": entry.get("published", "No published date"),
                 "summary": entry.get("summary", "No summary"),
+                "author": entry.get("author", "Unknown author"),
+                "categories": [tag.term for tag in entry.get("tags", [])],
+                "content": entry.get("content", [{}])[0].get("value", "No content"),
             })
 
-        return jsonify({"feed": {
-            "title": feed.feed.get("title", "No title"),
-            "link": feed.feed.get("link", "No link"),
-            "description": feed.feed.get("description", "No description"),
-        }, "items": items})
+        # Return response
+        return jsonify({"feed": feed_metadata, "items": items})
 
     except Exception as e:
         return jsonify({"error": str(e)}), 500
