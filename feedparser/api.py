@@ -1,52 +1,174 @@
 from flask import Flask, request, jsonify
 from waitress import serve
 import feedparser
+import requests
+from bs4 import BeautifulSoup
+from urllib.parse import urljoin
+from rapidfuzz import process, fuzz
+import json
+from lxml import etree
+from minify_html import minify
+from emoji import demojize
+import matplotlib.pyplot as plt
+from io import BytesIO
+import base64
+from PIL import Image
+from datetime import datetime
 
 app = Flask(__name__)
+app.config['USER_AGENT'] = "rssify/363 +https://burhanverse.eu.org/"
 
-# User-Agent
-feedparser.USER_AGENT = "rssify/3.9 +https://burhanverse.eu.org/"
+def fetch_url(url):
+    try:
+        response = requests.get(
+            url,
+            headers={'User-Agent': app.config['USER_AGENT']},
+            timeout=15
+        )
+        response.raise_for_status()
+        return response
+    except Exception as e:
+        raise ValueError(f"URL fetch failed: {str(e)}")
+
+def detect_content_type(response):
+    ctype = response.headers.get('Content-Type', '').split(';')[0].lower()
+    if not ctype:
+        if response.content.lstrip().startswith(b'{'):
+            return 'json'
+        if b'<rss' in response.content.lower():
+            return 'xml'
+    return ctype
+
+def extract_html_feeds(html, base_url):
+    soup = BeautifulSoup(html, 'lxml')
+    feed_links = []
+    
+    for link in soup.find_all('link', {
+        'type': ['application/rss+xml', 'application/atom+xml', 'application/json']
+    }):
+        feed_links.append(urljoin(base_url, link.get('href')))
+    
+    for a in soup.find_all('a', href=True):
+        if any(kw in a['href'].lower() for kw in ['rss', 'feed', 'atom']):
+            feed_links.append(urljoin(base_url, a['href']))
+
+    if feed_links:
+        ranked_feeds = process.extract(
+            'feed', 
+            feed_links, 
+            scorer=fuzz.partial_ratio,
+            limit=3
+        )
+        return [feed[0] for feed in ranked_feeds]
+    return []
+
+def parse_xml(content):
+    try:
+        parser = etree.XMLParser(recover=True)
+        tree = etree.fromstring(content, parser=parser)
+        content = etree.tostring(tree)
+    except Exception:
+        pass
+    
+    feed = feedparser.parse(content)
+    if feed.bozo:
+        raise ValueError(f"XML parsing error: {feed.bozo_exception.getMessage()}")
+    return feed
+
+def process_image(url):
+    try:
+        response = requests.get(url, timeout=10)
+        img = Image.open(BytesIO(response.content))
+        img.thumbnail((100, 100))
+        buffer = BytesIO()
+        img.save(buffer, format="PNG")
+        return f"data:image/png;base64,{base64.b64encode(buffer.getvalue()).decode()}"
+    except Exception:
+        return None
+
+def format_content(content, content_type='html'):
+    if content_type == 'html':
+        return minify(content, minify_js=True, minify_css=True)
+    return demojize(content)
 
 @app.route('/parse', methods=['GET'])
-def parse_rss():
-    rss_url = request.args.get('url')
-    if not rss_url:
-        return jsonify({"error": "Missing 'url' parameter"}), 400
+def parse_feed():
+    url = request.args.get('url')
+    if not url:
+        return jsonify({"error": "Missing URL parameter"}), 400
 
     try:
-        # Parse feed
-        feed = feedparser.parse(rss_url)
-        if feed.bozo:
-            return jsonify({"error": "Invalid RSS feed format"}), 400
+        response = fetch_url(url)
+        content_type = detect_content_type(response)
+        final_feed = None
 
-        # Extract metadata
+        if 'html' in content_type:
+            found_feeds = extract_html_feeds(response.content, url)
+            if not found_feeds:
+                raise ValueError("No feeds found in HTML content")
+
+            for feed_url in found_feeds:
+                try:
+                    feed_response = fetch_url(feed_url)
+                    content_type = detect_content_type(feed_response)
+                    break
+                except:
+                    continue
+            else:
+                raise ValueError("All discovered feeds failed to load")
+        else:
+            feed_response = response
+
+        if 'xml' in content_type:
+            feed = parse_xml(feed_response.content)
+        elif 'json' in content_type:
+            feed = parse_json(feed_response.content)
+        else:
+            raise ValueError("Unsupported content type")
+
         feed_metadata = {
-            "title": feed.feed.get("title", "No title"),
-            "link": feed.feed.get("link", "No link"),
-            "description": feed.feed.get("description", "No description"),
-            "language": feed.feed.get("language", "Unknown"),
-            "updated": feed.feed.get("updated", "No update date"),
+            "title": feed.get('title', 'Untitled Feed'),
+            "link": feed.get('link', url),
+            "description": feed.get('description', ''),
+            "language": feed.get('language', ''),
+            "updated": feed.get('updated', datetime.now().isoformat()),
+            "version": feed.get('version', '')
         }
 
-        # Extract entries
         items = []
-        for entry in feed.entries:
+        for entry in feed.entries[:50]:
+            image_url = None
+            if hasattr(entry, 'media_content'):
+                image_url = entry.media_content[0]['url'] if entry.media_content else None
+            elif hasattr(entry, 'image'):
+                image_url = entry.image.get('href') if hasattr(entry.image, 'href') else entry.image
+            
+            content = format_content(
+                getattr(entry, 'content', [{}])[0].get('value', '') or 
+                getattr(entry, 'summary', ''),
+                'html'
+            )
+
             items.append({
-                "title": entry.get("title", "No title"),
-                "link": entry.get("link", "No link"),
-                "published": entry.get("published", "No published date"),
-                "summary": entry.get("summary", "No summary"),
-                "author": entry.get("author", "Unknown author"),
-                "categories": [tag.term for tag in entry.get("tags", [])],
-                "content": entry.get("content", [{}])[0].get("value", "No content"),
+                "title": entry.get('title', 'Untitled'),
+                "link": entry.get('link', ''),
+                "published": entry.get('published', entry.get('date', '')),
+                "summary": format_content(entry.get('summary', ''), 'text'),
+                "author": entry.get('author', 'Unknown'),
+                "categories": [tag.term for tag in entry.get('tags', [])],
+                "content": content,
+                "image": process_image(image_url) if image_url else None
             })
 
-        # Return response
-        return jsonify({"feed": feed_metadata, "items": items})
+        return jsonify({
+            "feed": feed_metadata,
+            "items": items,
+            "source": "HTML discovered feed" if 'html' in content_type else "Direct feed"
+        })
 
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
 if __name__ == '__main__':
-    print("Starting server with waitress...")
+    print("Starting advanced feed parser...")
     serve(app, host='0.0.0.0', port=5000)

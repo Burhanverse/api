@@ -1,3 +1,13 @@
-Flask
-waitress
-feedparser
+flask 
+waitress 
+feedparser 
+listparser 
+lxml 
+pillow 
+beautifulsoup4 
+rapidfuzz 
+emoji 
+minify-html 
+minify-html-onepass 
+matplotlib 
+requests
