@@ -2,6 +2,8 @@ from flask import Flask, request, jsonify
 from waitress import serve
 import feedparser
 import requests
+import time
+from time import mktime
 from bs4 import BeautifulSoup
 from urllib.parse import urljoin
 from rapidfuzz import process, fuzz
@@ -135,8 +137,20 @@ def parse_feed():
             "version": feed.get('version', '')
         }
 
+        sorted_entries = sorted(
+            feed.entries,  # <- Parentheses instead of curly braces
+            key=lambda entry: mktime(
+                entry.get('published_parsed', 
+                    entry.get('updated_parsed', 
+                        time.struct_time((1970, 1, 1, 0, 0, 0, 0, 0, 0))
+                    )
+                )
+            ),
+            reverse=True  # Proper Python comment with #
+        )
+
         items = []
-        for entry in feed.entries[:50]:
+        for entry in sorted_entries[:50]:
             image_url = None
             if hasattr(entry, 'media_content'):
                 image_url = entry.media_content[0]['url'] if entry.media_content else None
