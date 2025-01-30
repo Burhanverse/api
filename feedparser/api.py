@@ -125,17 +125,19 @@ def parse_feed():
         sorted_entries = sorted(
             feed.entries,
             key=lambda entry: mktime(
-                entry.get('published_parsed', 
-                    entry.get('updated_parsed', 
-                        time.struct_time((1970, 1, 1, 0, 0, 0, 0, 0, 0))
-                    )
+                next(
+                    (d for d in [
+                        entry.get('published_parsed'),
+                        entry.get('updated_parsed')
+                    ] if isinstance(d, time.struct_time) and 1970 <= getattr(d, 'tm_year', 0) <= 2038),
+                    time.struct_time((1970, 1, 1, 0, 0, 0, 3, 1, 0))
                 )
             ),
             reverse=True
         )
 
         items = []
-        for entry in sorted_entries[:50]:
+        for entry in sorted_entries[:5]:
             content = format_content(
                 getattr(entry, 'content', [{}])[0].get('value', '') or 
                 getattr(entry, 'summary', ''),
