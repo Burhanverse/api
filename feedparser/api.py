@@ -11,14 +11,10 @@ import json
 from lxml import etree
 from minify_html import minify
 from emoji import demojize
-import matplotlib.pyplot as plt
-from io import BytesIO
-import base64
-from PIL import Image
 from datetime import datetime
 
 app = Flask(__name__)
-app.config['USER_AGENT'] = "rssify/363 +https://burhanverse.eu.org/"
+app.config['USER_AGENT'] = "rssify/364 +https://burhanverse.eu.org/"
 
 def fetch_url(url):
     try:
@@ -76,17 +72,6 @@ def parse_xml(content):
     if feed.bozo:
         raise ValueError(f"XML parsing error: {feed.bozo_exception.getMessage()}")
     return feed
-
-def process_image(url):
-    try:
-        response = requests.get(url, timeout=10)
-        img = Image.open(BytesIO(response.content))
-        img.thumbnail((100, 100))
-        buffer = BytesIO()
-        img.save(buffer, format="PNG")
-        return f"data:image/png;base64,{base64.b64encode(buffer.getvalue()).decode()}"
-    except Exception:
-        return None
 
 def format_content(content, content_type='html'):
     if content_type == 'html':
@@ -151,12 +136,6 @@ def parse_feed():
 
         items = []
         for entry in sorted_entries[:50]:
-            image_url = None
-            if hasattr(entry, 'media_content'):
-                image_url = entry.media_content[0]['url'] if entry.media_content else None
-            elif hasattr(entry, 'image'):
-                image_url = entry.image.get('href') if hasattr(entry.image, 'href') else entry.image
-            
             content = format_content(
                 getattr(entry, 'content', [{}])[0].get('value', '') or 
                 getattr(entry, 'summary', ''),
@@ -170,8 +149,7 @@ def parse_feed():
                 "summary": format_content(entry.get('summary', ''), 'text'),
                 "author": entry.get('author', 'Unknown'),
                 "categories": [tag.term for tag in entry.get('tags', [])],
-                "content": content,
-                "image": process_image(image_url) if image_url else None
+                "content": content
             })
 
         return jsonify({

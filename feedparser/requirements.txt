@@ -9,5 +9,4 @@ rapidfuzz
 emoji 
 minify-html 
 minify-html-onepass 
-matplotlib 
 requests
