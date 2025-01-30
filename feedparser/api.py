@@ -138,7 +138,7 @@ def parse_feed():
         }
 
         sorted_entries = sorted(
-            feed.entries,  # <- Parentheses instead of curly braces
+            feed.entries,
             key=lambda entry: mktime(
                 entry.get('published_parsed', 
                     entry.get('updated_parsed', 
@@ -146,7 +146,7 @@ def parse_feed():
                     )
                 )
             ),
-            reverse=True  # Proper Python comment with #
+            reverse=True
         )
 
         items = []
