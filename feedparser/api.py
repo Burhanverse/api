@@ -12,6 +12,7 @@ from lxml import etree
 from minify_html import minify
 from emoji import demojize
 from datetime import datetime
+import parser  # Our custom parser module
 
 app = Flask(__name__)
 app.config['USER_AGENT'] = "rssify/364 +https://burhanverse.eu.org/"
@@ -40,12 +41,12 @@ def detect_content_type(response):
 def extract_html_feeds(html, base_url):
     soup = BeautifulSoup(html, 'lxml')
     feed_links = []
-    
+
     for link in soup.find_all('link', {
         'type': ['application/rss+xml', 'application/atom+xml', 'application/json']
     }):
         feed_links.append(urljoin(base_url, link.get('href')))
-    
+
     for a in soup.find_all('a', href=True):
         if any(kw in a['href'].lower() for kw in ['rss', 'feed', 'atom']):
             feed_links.append(urljoin(base_url, a['href']))
@@ -67,11 +68,24 @@ def parse_xml(content):
         content = etree.tostring(tree)
     except Exception:
         pass
-    
+
     feed = feedparser.parse(content)
     if feed.bozo:
         raise ValueError(f"XML parsing error: {feed.bozo_exception.getMessage()}")
     return feed
+
+def parse_json(content):
+    try:
+        data = json.loads(content)
+        return {
+            'title': data.get('title', ''),
+            'link': data.get('home_page_url', ''),
+            'description': data.get('description', ''),
+            'entries': data.get('items', []),
+            'version': 'json'
+        }
+    except Exception as e:
+        raise ValueError(f"JSON parsing error: {str(e)}")
 
 def format_content(content, content_type='html'):
     if content_type == 'html':
@@ -88,42 +102,52 @@ def parse_feed():
         response = fetch_url(url)
         content_type = detect_content_type(response)
         final_feed = None
+        source = "Direct feed"
 
         if 'html' in content_type:
             found_feeds = extract_html_feeds(response.content, url)
-            if not found_feeds:
-                raise ValueError("No feeds found in HTML content")
-
-            for feed_url in found_feeds:
-                try:
-                    feed_response = fetch_url(feed_url)
-                    content_type = detect_content_type(feed_response)
-                    break
-                except:
-                    continue
-            else:
-                raise ValueError("All discovered feeds failed to load")
+            if found_feeds:
+                for feed_url in found_feeds:
+                    try:
+                        feed_response = fetch_url(feed_url)
+                        feed_content_type = detect_content_type(feed_response)
+                        if 'xml' in feed_content_type:
+                            feed = parse_xml(feed_response.content)
+                        elif 'json' in feed_content_type:
+                            feed = parse_json(feed_response.content)
+                        else:
+                            continue
+                        final_feed = feed
+                        source = "HTML discovered feed"
+                        break
+                    except Exception:
+                        continue
+            if not final_feed:
+                final_feed = parser.parse_html_to_feed(response.content, url)
+                source = "HTML parser"
         else:
-            feed_response = response
-
-        if 'xml' in content_type:
-            feed = parse_xml(feed_response.content)
-        elif 'json' in content_type:
-            feed = parse_json(feed_response.content)
-        else:
-            raise ValueError("Unsupported content type")
+            try:
+                if 'xml' in content_type:
+                    final_feed = parse_xml(response.content)
+                elif 'json' in content_type:
+                    final_feed = parse_json(response.content)
+                else:
+                    raise ValueError("Unsupported content type")
+            except Exception as e:
+                final_feed = parser.parse_html_to_feed(response.content, url)
+                source = "HTML parser (fallback)"
 
         feed_metadata = {
-            "title": feed.get('title', 'Untitled Feed'),
-            "link": feed.get('link', url),
-            "description": feed.get('description', ''),
-            "language": feed.get('language', ''),
-            "updated": feed.get('updated', datetime.now().isoformat()),
-            "version": feed.get('version', '')
+            "title": final_feed.get('title', 'Untitled Feed'),
+            "link": final_feed.get('link', url),
+            "description": final_feed.get('description', ''),
+            "language": final_feed.get('language', ''),
+            "updated": final_feed.get('updated', datetime.now().isoformat()),
+            "version": final_feed.get('version', '')
         }
 
         sorted_entries = sorted(
-            feed.entries,
+            final_feed.get('entries', []),
             key=lambda entry: mktime(
                 next(
                     (d for d in [
@@ -140,7 +164,7 @@ def parse_feed():
         for entry in sorted_entries[:5]:
             content = format_content(
                 getattr(entry, 'content', [{}])[0].get('value', '') or 
-                getattr(entry, 'summary', ''),
+                entry.get('summary', ''),
                 'html'
             )
 
@@ -150,14 +174,14 @@ def parse_feed():
                 "published": entry.get('published', entry.get('date', '')),
                 "summary": format_content(entry.get('summary', ''), 'text'),
                 "author": entry.get('author', 'Unknown'),
-                "categories": [tag.term for tag in entry.get('tags', [])],
+                "categories": [tag.get('term') for tag in entry.get('tags', [])],
                 "content": content
             })
 
         return jsonify({
             "feed": feed_metadata,
             "items": items,
-            "source": "HTML discovered feed" if 'html' in content_type else "Direct feed"
+            "source": source
         })
 
     except Exception as e:
