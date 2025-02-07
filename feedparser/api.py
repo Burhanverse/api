@@ -1,6 +1,7 @@
 from flask import Flask, request, jsonify
 from waitress import serve
 import feedparser
+import parser
 import requests
 import time
 from time import mktime
@@ -12,17 +13,16 @@ from lxml import etree
 from minify_html import minify
 from emoji import demojize
 from datetime import datetime
-import html.parser  # html parser module
 
-app = Flask(__name__)
-app.config['USER_AGENT'] = "rssify/30 +https://burhanverse.eu.org/"
+parserapi = Flask(__name__)
+parserapi.config['USER_AGENT'] = "rssify/30 +https://burhanverse.eu.org/"
 
 def fetch_url(url):
     try:
         response = requests.get(
             url,
-            headers={'User-Agent': app.config['USER_AGENT']},
-            timeout=15
+            headers={'User-Agent': parserapi.config['USER_AGENT']},
+            timeout=10
         )
         response.raise_for_status()
         return response
@@ -92,7 +92,7 @@ def format_content(content, content_type='html'):
         return minify(content, minify_js=True, minify_css=True)
     return demojize(content)
 
-@app.route('/parse', methods=['GET'])
+@parserapi.route('/parse', methods=['GET'])
 def parse_feed():
     url = request.args.get('url')
     if not url:
@@ -189,4 +189,4 @@ def parse_feed():
 
 if __name__ == '__main__':
     print("Starting advanced feed parser...")
-    serve(app, host='0.0.0.0', port=5000)
+    serve(parserapi, host='0.0.0.0', port=5000)
