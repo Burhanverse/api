@@ -4,27 +4,18 @@ from urllib.parse import urljoin
 from datetime import datetime
 
 def parse_html_to_feed(html_content, base_url):
-    """
-    Parse HTML content into a feed structure.
-    
-    First, attempt to extract the article using newspaper3k. If that fails or the result is too short,
-    fall back to using CSS selector heuristics via Selectolax.
-    """
-    # --- Attempt extraction with newspaper3k ---
+
     try:
         from newspaper import Article  # newspaper4k
         article_obj = Article(base_url)
         article_obj.set_html(html_content)
         article_obj.parse()
-        
-        # Use newspaper if we got a sufficiently long article text.
+
         if article_obj.text and len(article_obj.text.strip()) > 200:
             entry = {
                 'title': article_obj.title or 'Untitled Entry',
                 'link': base_url,
                 'published': article_obj.publish_date.isoformat() if article_obj.publish_date else '',
-                # Newspaper returns plain text. In a real-world scenario you might choose to wrap this in <p> tags,
-                # or use another method to generate HTML.
                 'content': [{'value': article_obj.text}],
                 'summary': (article_obj.text[:200] + '...') if len(article_obj.text) > 200 else article_obj.text,
                 'author': ', '.join(article_obj.authors) if article_obj.authors else '',
@@ -35,35 +26,33 @@ def parse_html_to_feed(html_content, base_url):
                 'title': feed_title,
                 'link': base_url,
                 'description': '',
-                'language': '',  # newspaper doesn't provide language information
+                'language': '',
                 'updated': datetime.now().isoformat(),
                 'entries': [entry],
                 'version': 'html'
             }
             return feed
     except Exception as e:
-        # If newspaper fails (or doesn't extract enough content), we'll fall back to our CSS-based approach.
-        # You might want to log the exception here.
+        # If newspaper4k fails or doesn't produce enough content, fall back to CSS-based approach.
         pass
 
     # --- Fallback: CSS selector heuristics with Selectolax ---
     tree = HTMLParser(html_content)
     
-    # Get language from the <html> tag.
     html_node = tree.css('html')
     language = html_node[0].attributes.get('lang', '') if html_node else ''
     
-    # Extract the feed title from the <title> tag.
     feed_title_elem = tree.css_first('title')
     feed_title = feed_title_elem.text(strip=True) if feed_title_elem else 'Untitled Feed'
     
     entries = []
     
-    # --- Step 1. Identify candidate article containers ---
-    # Define selectors to catch semantic articles as well as elements that might be used as article containers.
+    # --- Identify candidate article containers ---
+    # Expand selectors to catch semantic articles and also elements that might be used as article containers,
+    # including those using data attributes (common on sites with obfuscated or randomized classes).
     selectors = [
         'article',
-        '[itemtype*="Article"]',  # Schema.org articles
+        '[itemtype*="Article"]',
         '[class*="post"]',
         '[id*="post"]',
         '[class*="article"]',
@@ -72,14 +61,15 @@ def parse_html_to_feed(html_content, base_url):
         '[class*="entry"]',
         '[id*="entry"]',
         '[class*="story"]',
-        '[id*="story"]'
+        '[id*="story"]',
+        '[data-type*="in_view"]',
+        '[data-testid*="virginia-section-8"]'
     ]
     
     candidate_elements = []
     for selector in selectors:
         candidate_elements.extend(tree.css(selector))
     
-    # Remove duplicate elements (by their Python id).
     seen = set()
     unique_candidates = []
     for elem in candidate_elements:
@@ -87,9 +77,9 @@ def parse_html_to_feed(html_content, base_url):
             seen.add(id(elem))
             unique_candidates.append(elem)
     
-    # Filter out candidates that are likely too trivial (e.g. very short text)
+    # Filter out candidates that are too trivial (for example, with very short text).
     filtered_candidates = []
-    MIN_TEXT_LENGTH = 50  # tweak this threshold as needed
+    MIN_TEXT_LENGTH = 50  # Tweak this threshold as needed
     for candidate in unique_candidates:
         if len(candidate.text(strip=True)) >= MIN_TEXT_LENGTH:
             filtered_candidates.append(candidate)
@@ -98,19 +88,28 @@ def parse_html_to_feed(html_content, base_url):
     if not filtered_candidates:
         filtered_candidates = tree.css('body')
     
-    # --- Step 2. Process each candidate as a potential article ---
+    # --- Process each candidate as a potential article ---
     for candidate in filtered_candidates:
-        # Extract title: look for header tags and a “headline” microdata property.
-        title_elem = candidate.css_first('h1, h2, h3, [itemprop="headline"], .title')
+        # --- Title Extraction ---
+        title_elem = candidate.css_first(
+            'p, [data-testid*="card-headline"], h1, [itemprop="headline"], .title, '
+            '[data-type*="in_view"] p, '
+        )
         title = title_elem.text(strip=True) if title_elem else None
-        # Fallback: sometimes the first link might have meaningful text.
+        
+        # Additional fallbacks
+        if not title:
+            title = candidate.attributes.get('aria-label', '').strip() or None
+        
         if not title:
             link_elem = candidate.css_first('a[href]')
             title = link_elem.text(strip=True) if link_elem else None
+        
         if not title:
             title = 'Untitled Entry'
         
-        # Extract link: use the first anchor tag inside the container.
+        # --- Link Extraction ---
+        # Use the first anchor tag inside the container.
         link = base_url
         link_elem = candidate.css_first('a[href]')
         if link_elem:
@@ -118,17 +117,14 @@ def parse_html_to_feed(html_content, base_url):
             if href:
                 link = urljoin(base_url, href)
         
-        # Extract published date: look for <time> or similar elements.
+        # --- Published Date Extraction ---
         published = ''
         date_elem = candidate.css_first('time, [datetime], .date, .published, .posted-on')
         if date_elem:
             datetime_attr = date_elem.attributes.get('datetime')
-            if datetime_attr:
-                published = datetime_attr
-            else:
-                published = date_elem.text(strip=True)
+            published = datetime_attr if datetime_attr else date_elem.text(strip=True)
         
-        # Extract content: look for elements likely to hold the article body.
+        # --- Content Extraction ---
         content_elem = candidate.css_first('[itemprop="articleBody"], .content, .entry-content, .post-content')
         if content_elem:
             content_html = content_elem.html
@@ -136,13 +132,13 @@ def parse_html_to_feed(html_content, base_url):
             # Fallback: use the entire candidate HTML.
             content_html = candidate.html
         
-        # Extract author.
+        # --- Author Extraction ---
         author = ''
         author_elem = candidate.css_first('[itemprop="author"], .author, .byline')
         if author_elem:
             author = author_elem.text(strip=True)
         
-        # Extract categories/tags.
+        # --- Categories/Tags Extraction ---
         tags = []
         tag_elems = candidate.css('[rel="tag"], .category, .tag')
         for tag in tag_elems:
@@ -150,7 +146,7 @@ def parse_html_to_feed(html_content, base_url):
             if tag_text:
                 tags.append({'term': tag_text})
         
-        # Create a summary by stripping HTML from the content.
+        # --- Summary Creation ---
         summary_text = re.sub(r'<[^>]+>', '', content_html) if content_html else ''
         summary = (summary_text[:200] + '...') if summary_text and len(summary_text) > 200 else summary_text
         
