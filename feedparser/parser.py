@@ -1,10 +1,34 @@
+"""
+MIT License
+
+Copyright (c) 2025 Burhanverse
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
+"""
+
 import re
 from selectolax.parser import HTMLParser
-from urllib.parse import urljoin
+from urllib.parse import urljoin, urlparse
 from datetime import datetime
+import importlib
 
 def parse_html_to_feed(html_content, base_url):
-
     try:
         from newspaper import Article  # newspaper4k
         article_obj = Article(base_url)
@@ -32,124 +56,140 @@ def parse_html_to_feed(html_content, base_url):
                 'version': 'html'
             }
             return feed
-    except Exception as e:
+    except Exception:
         # If newspaper4k fails or doesn't produce enough content, fall back to CSS-based approach.
         pass
 
     # --- Fallback: CSS selector heuristics with Selectolax ---
+    parsed_url = urlparse(base_url)
+    domain = parsed_url.netloc.lower()
+
+    # Mapping of domains to config module paths.
+    custom_configs = {
+        'bbc.com': 'cfg.bbc',
+        'timesofindia.indiatimes.com': 'cfg.toi',
+    }
+
+    site_config = None
+    for key, mod_path in custom_configs.items():
+        if key in domain:
+            try:
+                site_config = importlib.import_module(mod_path)
+            except ImportError:
+                site_config = None
+            break
+
     tree = HTMLParser(html_content)
-    
+
+    # Get language from the <html> tag.
     html_node = tree.css('html')
     language = html_node[0].attributes.get('lang', '') if html_node else ''
-    
+
     feed_title_elem = tree.css_first('title')
     feed_title = feed_title_elem.text(strip=True) if feed_title_elem else 'Untitled Feed'
-    
+
     entries = []
-    
-    # --- Identify candidate article containers ---
-    # Expand selectors to catch semantic articles and also elements that might be used as article containers,
-    # including those using data attributes (common on sites with obfuscated or randomized classes).
-    selectors = [
-        'article',
-        '[itemtype*="Article"]',
-        '[class*="post"]',
-        '[id*="post"]',
-        '[class*="article"]',
-        '[class*="articles"]',
-        '[id*="article"]',
-        '[class*="entry"]',
-        '[id*="entry"]',
-        '[class*="story"]',
-        '[id*="story"]',
-        '[data-type*="in_view"]',
-        '[data-testid*="virginia-section-8"]'
-    ]
-    
+
+    # --- Common candidate article containers ---
+    if site_config and hasattr(site_config, "candidate_selectors"):
+        selectors = site_config.candidate_selectors
+    else:
+        selectors = [
+            'article',
+            '[itemtype*="Article"]',
+            '[class*="post"]',
+            '[id*="post"]',
+            '[class*="article"]',
+            '[class*="articles"]',
+            '[id*="article"]',
+            '[class*="entry"]',
+            '[id*="entry"]',
+            '[class*="story"]',
+            '[id*="story"]'
+        ]
+
     candidate_elements = []
     for selector in selectors:
         candidate_elements.extend(tree.css(selector))
-    
+
     seen = set()
     unique_candidates = []
     for elem in candidate_elements:
         if id(elem) not in seen:
             seen.add(id(elem))
             unique_candidates.append(elem)
-    
-    # Filter out candidates that are too trivial (for example, with very short text).
-    filtered_candidates = []
-    MIN_TEXT_LENGTH = 50  # Tweak this threshold as needed
-    for candidate in unique_candidates:
-        if len(candidate.text(strip=True)) >= MIN_TEXT_LENGTH:
-            filtered_candidates.append(candidate)
-    
+
+    MIN_TEXT_LENGTH = 50  # Minimum text length to consider
+    filtered_candidates = [cand for cand in unique_candidates if len(cand.text(strip=True)) >= MIN_TEXT_LENGTH]
+
     # Fallback: if no candidate is found, use the entire <body>.
     if not filtered_candidates:
         filtered_candidates = tree.css('body')
-    
+
     # --- Process each candidate as a potential article ---
     for candidate in filtered_candidates:
-        # --- Title Extraction ---
-        title_elem = candidate.css_first(
-            'p, [data-testid*="card-headline"], h1, [itemprop="headline"], .title, '
-            '[data-type*="in_view"] p, '
-        )
+        # --- Common Title Extraction ---
+        if site_config and hasattr(site_config, "title_selector"):
+            title_elem = candidate.css_first(site_config.title_selector)
+        else:
+            title_elem = candidate.css_first(
+                ' h1, [itemprop="headline"], .title'
+            )
         title = title_elem.text(strip=True) if title_elem else None
-        
-        # Additional fallbacks
         if not title:
             title = candidate.attributes.get('aria-label', '').strip() or None
-        
         if not title:
             link_elem = candidate.css_first('a[href]')
             title = link_elem.text(strip=True) if link_elem else None
-        
         if not title:
             title = 'Untitled Entry'
-        
-        # --- Link Extraction ---
-        # Use the first anchor tag inside the container.
+
+        # --- Common Link Extraction ---
         link = base_url
         link_elem = candidate.css_first('a[href]')
         if link_elem:
             href = link_elem.attributes.get('href', '')
             if href:
                 link = urljoin(base_url, href)
-        
-        # --- Published Date Extraction ---
+
+        # --- Common Published Date Extraction ---
+        if site_config and hasattr(site_config, "date_selector"):
+            date_elem = candidate.css_first(site_config.date_selector)
+        else:
+            date_elem = candidate.css_first('time, [datetime], .date, .published, .posted-on')
         published = ''
-        date_elem = candidate.css_first('time, [datetime], .date, .published, .posted-on')
         if date_elem:
             datetime_attr = date_elem.attributes.get('datetime')
             published = datetime_attr if datetime_attr else date_elem.text(strip=True)
-        
-        # --- Content Extraction ---
-        content_elem = candidate.css_first('[itemprop="articleBody"], .content, .entry-content, .post-content')
+
+        # --- Common Content Extraction ---
+        if site_config and hasattr(site_config, "content_selector"):
+            content_elem = candidate.css_first(site_config.content_selector)
+        else:
+            content_elem = candidate.css_first('[itemprop="articleBody"], .content, .entry-content, .post-content')
         if content_elem:
             content_html = content_elem.html
         else:
-            # Fallback: use the entire candidate HTML.
             content_html = candidate.html
-        
-        # --- Author Extraction ---
-        author = ''
-        author_elem = candidate.css_first('[itemprop="author"], .author, .byline')
-        if author_elem:
-            author = author_elem.text(strip=True)
-        
-        # --- Categories/Tags Extraction ---
-        tags = []
-        tag_elems = candidate.css('[rel="tag"], .category, .tag')
-        for tag in tag_elems:
-            tag_text = tag.text(strip=True)
-            if tag_text:
-                tags.append({'term': tag_text})
-        
-        # --- Summary Creation ---
+
+        # --- Common Author Extraction ---
+        if site_config and hasattr(site_config, "author_selector"):
+            author_elem = candidate.css_first(site_config.author_selector)
+        else:
+            author_elem = candidate.css_first('[itemprop="author"], .author, .byline')
+        author = author_elem.text(strip=True) if author_elem else ''
+
+        # --- Common Tags Extraction ---
+        if site_config and hasattr(site_config, "tag_selector"):
+            tag_elems = candidate.css(site_config.tag_selector)
+        else:
+            tag_elems = candidate.css('[rel="tag"], .category, .tag')
+        tags = [{'term': tag.text(strip=True)} for tag in tag_elems if tag.text(strip=True)]
+
+        # --- Common Summary Creation ---
         summary_text = re.sub(r'<[^>]+>', '', content_html) if content_html else ''
         summary = (summary_text[:200] + '...') if summary_text and len(summary_text) > 200 else summary_text
-        
+
         entries.append({
             'title': title,
             'link': link,
@@ -159,8 +199,8 @@ def parse_html_to_feed(html_content, base_url):
             'author': author,
             'tags': tags
         })
-    
-    # --- Final feed assembly ---
+
+    # --- Final Feed Assembly ---
     feed = {
         'title': feed_title,
         'link': base_url,
@@ -170,5 +210,5 @@ def parse_html_to_feed(html_content, base_url):
         'entries': entries,
         'version': 'html'
     }
-    
+
     return feed
