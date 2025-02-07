@@ -12,10 +12,10 @@ from lxml import etree
 from minify_html import minify
 from emoji import demojize
 from datetime import datetime
-import parser  # Our custom parser module
+import html.parser  # html parser module
 
 app = Flask(__name__)
-app.config['USER_AGENT'] = "rssify/364 +https://burhanverse.eu.org/"
+app.config['USER_AGENT'] = "rssify/30 +https://burhanverse.eu.org/"
 
 def fetch_url(url):
     try:
