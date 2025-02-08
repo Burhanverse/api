@@ -1,4 +1,4 @@
-# cfg/toi.py
+# cfg/et.py
 
 """
 MIT License
@@ -26,11 +26,17 @@ SOFTWARE.
 
 # Candidate article containers
 candidate_selectors = [
-    '[data-type*="in_view"]',
+    '[id*="topStories"]', #home page
+    '[class*="eachStory"]', #agriculture
+    '[id*="pageContent"]', #tech
+    '[class*="story_sec"]', #crypto
 ]
 
 # Selector to extract the article title
-title_selector = 'p'
+title_selector = [
+    'h1, h2, h3, h4, h5, h6',
+    '[class*="story_lg_head"]',
+]
 
 # Selector for publication date
 date_selector = 'div.date, time'

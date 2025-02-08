@@ -11,4 +11,3 @@ minify-html
 minify-html-onepass 
 requests
 selectolax
-Newspaper4k

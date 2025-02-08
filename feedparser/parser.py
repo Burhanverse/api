@@ -29,38 +29,7 @@ from datetime import datetime
 import importlib
 
 def parse_html_to_feed(html_content, base_url):
-    try:
-        from newspaper import Article  # newspaper4k
-        article_obj = Article(base_url)
-        article_obj.set_html(html_content)
-        article_obj.parse()
-
-        if article_obj.text and len(article_obj.text.strip()) > 200:
-            entry = {
-                'title': article_obj.title or 'Untitled Entry',
-                'link': base_url,
-                'published': article_obj.publish_date.isoformat() if article_obj.publish_date else '',
-                'content': [{'value': article_obj.text}],
-                'summary': (article_obj.text[:200] + '...') if len(article_obj.text) > 200 else article_obj.text,
-                'author': ', '.join(article_obj.authors) if article_obj.authors else '',
-                'tags': [{'term': tag} for tag in article_obj.keywords] if hasattr(article_obj, 'keywords') and article_obj.keywords else []
-            }
-            feed_title = article_obj.title if article_obj.title else 'Untitled Feed'
-            feed = {
-                'title': feed_title,
-                'link': base_url,
-                'description': '',
-                'language': '',
-                'updated': datetime.now().isoformat(),
-                'entries': [entry],
-                'version': 'html'
-            }
-            return feed
-    except Exception:
-        # If newspaper4k fails or doesn't produce enough content, fall back to CSS-based approach.
-        pass
-
-    # --- Fallback: CSS selector heuristics with Selectolax ---
+    # --- CSS selector heuristics with Selectolax ---
     parsed_url = urlparse(base_url)
     domain = parsed_url.netloc.lower()
 
@@ -68,6 +37,7 @@ def parse_html_to_feed(html_content, base_url):
     custom_configs = {
         'bbc.com': 'cfg.bbc',
         'timesofindia.indiatimes.com': 'cfg.toi',
+        'economictimes.indiatimes.com': 'cfg.et',
     }
 
     site_config = None
