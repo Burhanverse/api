@@ -1,7 +1,7 @@
 """
 MIT License
 
-Copyright (c) 2025 Burhanverse
+Copyright (c) 2025 Burhanverse <contact@burhanverse.eu.org>
 
 Permission is hereby granted, free of charge, to any person obtaining a copy
 of this software and associated documentation files (the "Software"), to deal
@@ -33,7 +33,6 @@ def parse_html_to_feed(html_content, base_url):
     parsed_url = urlparse(base_url)
     domain = parsed_url.netloc.lower()
 
-    # Mapping of domains to config module paths.
     custom_configs = {
         'bbc.com': 'cfg.bbc',
         'timesofindia.indiatimes.com': 'cfg.toi',
@@ -51,7 +50,6 @@ def parse_html_to_feed(html_content, base_url):
 
     tree = HTMLParser(html_content)
 
-    # Get language from the <html> tag.
     html_node = tree.css('html')
     language = html_node[0].attributes.get('lang', '') if html_node else ''
 

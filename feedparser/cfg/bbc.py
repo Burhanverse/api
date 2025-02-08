@@ -3,7 +3,7 @@
 """
 MIT License
 
-Copyright (c) 2025 Burhanverse
+Copyright (c) 2025 Burhanverse <contact@burhanverse.eu.org>
 
 Permission is hereby granted, free of charge, to any person obtaining a copy
 of this software and associated documentation files (the "Software"), to deal
@@ -26,7 +26,8 @@ SOFTWARE.
 
 # Candidate article containers
 candidate_selectors = [
-    '[data-testid*="edinburgh-card"]'
+    '[data-testid*="edinburgh-card"]',
+    '[data-testid*="london-card"]',
 ]
 
 # Selector to extract the article title
@@ -36,7 +37,7 @@ title_selector = '[data-testid*="card-headline"]'
 content_selector = '[data-testid*="card-description"]'
 
 # Selector for publication date
-date_selector = '[data-testid*="card-metadata-lastupdated"]'
+date_selector = 'div.date, time'
 
 # Selector for  author
 author_selector = ''
