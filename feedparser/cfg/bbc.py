@@ -40,7 +40,7 @@ content_selector = '[data-testid*="card-description"]'
 date_selector = 'div.date, time'
 
 # Selector for  author
-author_selector = ''
+author_selector = 'span.byline__name'
 
 # Selector for tags or categories
-tag_selector = ''
+tag_selector = 'ul.tags li'
