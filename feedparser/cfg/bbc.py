@@ -36,10 +36,10 @@ title_selector = '[data-testid*="card-headline"]'
 content_selector = '[data-testid*="card-description"]'
 
 # Selector for publication date
-date_selector = 'div.date, time'
+date_selector = '[data-testid*="card-metadata-lastupdated"]'
 
 # Selector for  author
-author_selector = 'span.byline__name'
+author_selector = ''
 
 # Selector for tags or categories
-tag_selector = 'ul.tags li'
+tag_selector = ''
