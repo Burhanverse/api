@@ -39,7 +39,7 @@ from emoji import demojize
 from datetime import datetime
 
 parserapi = Flask(__name__)
-parserapi.config['USER_AGENT'] = "rssify/31 +https://burhanverse.eu.org/"
+parserapi.config['USER_AGENT'] = "rssify/38 +https://burhanverse.eu.org/"
 
 def fetch_url(url):
     try:
@@ -212,5 +212,5 @@ def parse_feed():
         return jsonify({"error": str(e)}), 500
 
 if __name__ == '__main__':
-    print("Starting advanced feed parser...")
+    print("Starting ParserAPI...")
     serve(parserapi, host='0.0.0.0', port=5000)
