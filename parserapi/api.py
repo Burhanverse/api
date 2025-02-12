@@ -213,4 +213,4 @@ def parse_feed():
 
 if __name__ == '__main__':
     print("Starting ParserAPI...")
-    serve(parserapi, host='0.0.0.0', port=5000)
+    serve(parserapi, threads=8, host='0.0.0.0', port=5000)

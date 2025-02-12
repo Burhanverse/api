@@ -26,10 +26,10 @@ from flask import Flask, request, jsonify
 from ytmusicapi import YTMusic
 from waitress import serve
 
-app = Flask(__name__)
+tunified = Flask(__name__)
 ytmusic = YTMusic()
 
-@app.route('/search', methods=['GET'])
+@tunified.route('/search', methods=['GET'])
 def search():
     query = request.args.get('query')
     if not query:
@@ -56,4 +56,4 @@ def search():
         return jsonify({"error": str(e)}), 500
 
 if __name__ == '__main__':
-	serve(app, host='0.0.0.0', port=8080)
+	serve(tunified, threads=8, host='0.0.0.0', port=8080)
