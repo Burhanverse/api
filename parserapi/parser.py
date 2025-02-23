@@ -29,7 +29,6 @@ from datetime import datetime
 import importlib
 
 def parse_html_to_feed(html_content, base_url):
-    # --- CSS selector heuristics with Selectolax ---
     parsed_url = urlparse(base_url)
     domain = parsed_url.netloc.lower()
 
@@ -58,7 +57,7 @@ def parse_html_to_feed(html_content, base_url):
 
     entries = []
 
-    # --- Common candidate article containers ---
+    # Common candidate article containers
     if site_config and hasattr(site_config, "candidate_selectors"):
         selectors = site_config.candidate_selectors
     else:
@@ -73,7 +72,8 @@ def parse_html_to_feed(html_content, base_url):
             '[class*="entry"]',
             '[id*="entry"]',
             '[class*="story"]',
-            '[id*="story"]'
+            '[id*="story"]',
+            '[role="article"]'
         ]
 
     candidate_elements = []
@@ -87,32 +87,94 @@ def parse_html_to_feed(html_content, base_url):
             seen.add(id(elem))
             unique_candidates.append(elem)
 
-    MIN_TEXT_LENGTH = 50  # Minimum text length to consider
+    MIN_TEXT_LENGTH = 50
     filtered_candidates = [cand for cand in unique_candidates if len(cand.text(strip=True)) >= MIN_TEXT_LENGTH]
 
-    # Fallback: if no candidate is found, use the entire <body>.
     if not filtered_candidates:
         filtered_candidates = tree.css('body')
 
-    # --- Process each candidate as a potential article ---
     for candidate in filtered_candidates:
-        # --- Common Title Extraction ---
+        # --- Title Extraction ---
+        title = None
+        title_candidates = []
+
+        # Site-specific title extraction
         if site_config and hasattr(site_config, "title_selector"):
-            title_elem = candidate.css_first(site_config.title_selector)
+            title_elems = candidate.css(site_config.title_selector)
+            for elem in title_elems:
+                text = elem.text(strip=True)
+                if text:
+                    title_candidates.append(text)
+
+        # Common selectors in priority order
+        common_selectors = [
+            'h1', 'h2', 'h3',
+            '[itemprop="headline"]',
+            '[class*="post-card_title"]',
+            '.title', '.headline', '.entry-title',
+            'a[rel="bookmark"]'
+        ]
+        for selector in common_selectors:
+            elems = candidate.css(selector)
+            for elem in elems:
+                text = elem.text(strip=True)
+                if text:
+                    title_candidates.append(text)
+
+        # Aria-label attribute
+        aria_label = candidate.attributes.get('aria-label', '').strip()
+        if aria_label:
+            title_candidates.append(aria_label)
+
+        # Link texts within candidate
+        link_elems = candidate.css('a[href]')
+        for link in link_elems:
+            text = link.text(strip=True)
+            if text:
+                title_candidates.append(text)
+
+        # Remove duplicates while preserving order
+        seen_titles = set()
+        unique_title_candidates = []
+        for title in title_candidates:
+            if title not in seen_titles:
+                seen_titles.add(title)
+                unique_title_candidates.append(title)
+
+        if unique_title_candidates:
+            title = unique_title_candidates[0]
         else:
-            title_elem = candidate.css_first(
-                ' h1, [itemprop="headline"], .title'
-            )
-        title = title_elem.text(strip=True) if title_elem else None
-        if not title:
-            title = candidate.attributes.get('aria-label', '').strip() or None
-        if not title:
-            link_elem = candidate.css_first('a[href]')
-            title = link_elem.text(strip=True) if link_elem else None
+            # Fallback to document title and global h1
+            doc_title_elem = tree.css_first('title')
+            doc_title = doc_title_elem.text(strip=True) if doc_title_elem else ''
+            if doc_title:
+                separators = ['|', '-', '—', '•', '::', '–']
+                for sep in separators:
+                    if sep in doc_title:
+                        parts = doc_title.split(sep, 1)
+                        candidate_title = parts[0].strip()
+                        if candidate_title:
+                            title = candidate_title
+                            break
+                if not title:
+                    title = doc_title.strip()
+            else:
+                title = ''
+
+            # Check global h2 elements if still no title
+            if not title:
+                h2_elems = tree.css('h2')
+                for h2 in h2_elems:
+                    h2_text = h2.text(strip=True)
+                    if h2_text:
+                        title = h2_text
+                        break
+
+        # Final fallback
         if not title:
             title = 'Untitled Entry'
 
-        # --- Common Link Extraction ---
+        # --- Link Extraction ---
         link = base_url
         link_elem = candidate.css_first('a[href]')
         if link_elem:
@@ -120,7 +182,7 @@ def parse_html_to_feed(html_content, base_url):
             if href:
                 link = urljoin(base_url, href)
 
-        # --- Common Published Date Extraction ---
+        # --- Published Date Extraction ---
         if site_config and hasattr(site_config, "date_selector"):
             date_elem = candidate.css_first(site_config.date_selector)
         else:
@@ -130,7 +192,7 @@ def parse_html_to_feed(html_content, base_url):
             datetime_attr = date_elem.attributes.get('datetime')
             published = datetime_attr if datetime_attr else date_elem.text(strip=True)
 
-        # --- Common Content Extraction ---
+        # --- Content Extraction ---
         if site_config and hasattr(site_config, "content_selector"):
             content_elem = candidate.css_first(site_config.content_selector)
         else:
@@ -140,21 +202,21 @@ def parse_html_to_feed(html_content, base_url):
         else:
             content_html = candidate.html
 
-        # --- Common Author Extraction ---
+        # --- Author Extraction ---
         if site_config and hasattr(site_config, "author_selector"):
             author_elem = candidate.css_first(site_config.author_selector)
         else:
             author_elem = candidate.css_first('[itemprop="author"], .author, .byline')
         author = author_elem.text(strip=True) if author_elem else ''
 
-        # --- Common Tags Extraction ---
+        # --- Tags Extraction ---
         if site_config and hasattr(site_config, "tag_selector"):
             tag_elems = candidate.css(site_config.tag_selector)
         else:
             tag_elems = candidate.css('[rel="tag"], .category, .tag')
         tags = [{'term': tag.text(strip=True)} for tag in tag_elems if tag.text(strip=True)]
 
-        # --- Common Summary Creation ---
+        # --- Summary Creation ---
         summary_text = re.sub(r'<[^>]+>', '', content_html) if content_html else ''
         summary = (summary_text[:200] + '...') if summary_text and len(summary_text) > 200 else summary_text
 
