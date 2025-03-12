@@ -39,7 +39,7 @@ from emoji import demojize
 from datetime import datetime
 
 parserapi = Flask(__name__)
-parserapi.config['USER_AGENT'] = "rssify/38 +https://burhanverse.eu.org/"
+parserapi.config['USER_AGENT'] = "rssify/36 +https://burhanverse.eu.org/"
 
 def fetch_url(url):
     try:
