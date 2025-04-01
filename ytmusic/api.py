@@ -36,24 +36,16 @@ def search():
         return jsonify({"error": "Query parameter is required"}), 400
 
     try:
-        results = ytmusic.search(query, filter='songs')
+        results = ytmusic.search(query, filter='songs', limit=1)
         if not results:
-            return jsonify({"results": []})
+            return jsonify({"coverArt": ""})
 
-        response = []
-        for result in results:
-            response.append({
-                "videoId": result["videoId"],
-                "title": result["title"],
-                "artists": [{"name": artist["name"], "id": artist["id"]} for artist in result.get("artists", [])],
-                "album": result.get("album", {}),
-                "thumbnails": result.get("thumbnails", []),
-                "duration": result.get("duration"),
-            })
+        thumbnails = results[0].get("thumbnails", [{}])
+        cover_art = thumbnails[0].get("url", "") if thumbnails else ""
 
-        return jsonify({"results": response})
+        return jsonify({"coverArt": cover_art})
     except Exception as e:
-        return jsonify({"error": str(e)}), 500
+        return jsonify({"error": "Internal server error"}), 500
 
 if __name__ == '__main__':
-	serve(tunified, threads=8, host='0.0.0.0', port=8080)
+    serve(tunified, threads=8, host='0.0.0.0', port=8080)
