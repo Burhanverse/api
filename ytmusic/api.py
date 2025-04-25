@@ -44,11 +44,7 @@ def search():
         for result in results:
             response.append({
                 "videoId": result["videoId"],
-                "title": result["title"],
-                "artists": [{"name": artist["name"], "id": artist["id"]} for artist in result.get("artists", [])],
-                "album": result.get("album", {}),
                 "thumbnails": result.get("thumbnails", []),
-                "duration": result.get("duration"),
             })
 
         return jsonify({"results": response})
