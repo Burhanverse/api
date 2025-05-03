@@ -25,6 +25,9 @@ SOFTWARE.
 from flask import Flask, request, jsonify
 from ytmusicapi import YTMusic
 from waitress import serve
+import logging
+
+logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
 
 tunified = Flask(__name__)
 ytmusic = YTMusic()
@@ -53,4 +56,10 @@ def search():
         return jsonify({"error": str(e)}), 500
 
 if __name__ == '__main__':
-	serve(tunified, threads=8, host='0.0.0.0', port=8080)
+    serve(tunified, 
+          threads=32,                  
+          host='0.0.0.0', 
+          port=8080,
+          connection_limit=1000,       
+          channel_timeout=30,
+          cleanup_interval=5)
