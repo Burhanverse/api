@@ -26,8 +26,8 @@ SOFTWARE.
 
 # Candidate article containers
 candidate_selectors = [
-    '[data-testid*="edinburgh-card"]',
-    '[data-testid*="london-card"]',
+    '[data-testid*="dundee-card"]',
+    '[data-testid*="nevada-card"]',
 ]
 
 # Selector to extract the article title
