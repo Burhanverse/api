@@ -1,6 +1,6 @@
 flask 
 waitress 
-git+https://github.com/kurtmckee/feedparser.git@develop#egg=feedparser
+git+https://github.com/kurtmckee/feedparser.git@main#egg=feedparser
 listparser 
 lxml 
 pillow 
