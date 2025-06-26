@@ -25,7 +25,7 @@ SOFTWARE.
 from flask import Flask, request, jsonify
 from waitress import serve
 import feedparser
-import parser
+import htmlparser
 import requests
 import time
 from time import mktime
@@ -147,7 +147,7 @@ def parse_feed():
                     except Exception:
                         continue
             if not final_feed:
-                final_feed = parser.parse_html_to_feed(response.content, url)
+                final_feed = htmlparser.parse_html_to_feed(response.content, url)
                 source = "HTML parser"
         else:
             try:
@@ -158,7 +158,7 @@ def parse_feed():
                 else:
                     raise ValueError("Unsupported content type")
             except Exception as e:
-                final_feed = parser.parse_html_to_feed(response.content, url)
+                final_feed = htmlparser.parse_html_to_feed(response.content, url)
                 source = "HTML parser (fallback)"
 
         feed_metadata = {
