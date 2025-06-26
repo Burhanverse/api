@@ -25,7 +25,7 @@ SOFTWARE.
 from flask import Flask, request, jsonify
 from waitress import serve
 import feedparser
-import htmlparser
+from . import htmlparser
 import requests
 import time
 from time import mktime
