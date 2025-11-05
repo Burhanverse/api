@@ -1,7 +1,12 @@
-from flask import Flask, request, jsonify
-from waitress import serve
+"""
+FastAPI implementation with ScrapeGraphAI-based HTML parser
+AI-powered content extraction using Google Gemini
+"""
+
+from fastapi import FastAPI, Query, HTTPException
+from fastapi.responses import JSONResponse
 import feedparser
-from . import htmlparser
+from . import htmlparser_scrapegraph
 import requests
 import time
 from time import mktime
@@ -13,15 +18,24 @@ from lxml import etree
 from minify_html import minify
 from emoji import demojize
 from datetime import datetime
+import os
+from typing import Optional
 
-parserapi = Flask(__name__)
-parserapi.config['USER_AGENT'] = "rssify/36 +https://burhanverse.eu.org/"
+parserapi = FastAPI(
+    title="RSS Parser API",
+    description="AI-powered feed parser supporting RSS, Atom, JSON feeds, and intelligent HTML parsing",
+    version="2.0.0"
+)
+
+USER_AGENT = "rssify/36 +https://burhanverse.eu.org/"
+GEMINI_API_KEY = os.getenv('GEMINI_API_KEY')
 
 def fetch_url(url):
+    """Fetch URL with error handling"""
     try:
         response = requests.get(
             url,
-            headers={'User-Agent': parserapi.config['USER_AGENT']},
+            headers={'User-Agent': USER_AGENT},
             timeout=10
         )
         response.raise_for_status()
@@ -30,6 +44,7 @@ def fetch_url(url):
         raise ValueError(f"URL fetch failed: {str(e)}")
 
 def detect_content_type(response):
+    """Detect the content type of the response"""
     ctype = response.headers.get('Content-Type', '').split(';')[0].lower()
     if not ctype:
         if response.content.lstrip().startswith(b'{'):
@@ -39,6 +54,7 @@ def detect_content_type(response):
     return ctype
 
 def extract_html_feeds(html, base_url):
+    """Extract feed links from HTML"""
     soup = BeautifulSoup(html, 'lxml')
     feed_links = []
 
@@ -62,6 +78,7 @@ def extract_html_feeds(html, base_url):
     return []
 
 def parse_xml(content):
+    """Parse XML/RSS feed content"""
     try:
         parser = etree.XMLParser(recover=True)
         tree = etree.fromstring(content, parser=parser)
@@ -75,6 +92,7 @@ def parse_xml(content):
     return feed
 
 def parse_json(content):
+    """Parse JSON feed content"""
     try:
         data = json.loads(content)
         return {
@@ -88,15 +106,28 @@ def parse_json(content):
         raise ValueError(f"JSON parsing error: {str(e)}")
 
 def format_content(content, content_type='html'):
+    """Format content based on type"""
     if content_type == 'html':
         return minify(content, minify_js=True, minify_css=True)
     return demojize(content)
 
-@parserapi.route('/parse', methods=['GET'])
-def parse_feed():
-    url = request.args.get('url')
-    if not url:
-        return jsonify({"error": "Missing URL parameter"}), 400
+@parserapi.get("/parse")
+async def parse_feed(
+    url: str = Query(..., description="The URL to parse"),
+    gemini_key: Optional[str] = Query(None, description="Optional Gemini API key (overrides environment variable)")
+):
+    """
+    Parse a feed from the given URL.
+    
+    Supports:
+    - RSS/Atom/JSON feeds
+    - AI-powered HTML parsing using ScrapeGraphAI + Gemini
+    - Automatic feed discovery in HTML pages
+    
+    Returns structured feed data with articles/posts.
+    """
+    # Get Gemini API key from request or environment
+    api_key = gemini_key or GEMINI_API_KEY
 
     try:
         response = fetch_url(url)
@@ -105,6 +136,7 @@ def parse_feed():
         source = "Direct feed"
 
         if 'html' in content_type:
+            # First, try to find embedded feed links
             found_feeds = extract_html_feeds(response.content, url)
             if found_feeds:
                 for feed_url in found_feeds:
@@ -122,10 +154,23 @@ def parse_feed():
                         break
                     except Exception:
                         continue
+            
+            # If no feed found, use AI-powered HTML parser
             if not final_feed:
-                final_feed = htmlparser.parse_html_to_feed(response.content, url)
-                source = "HTML parser"
+                if not api_key:
+                    raise HTTPException(
+                        status_code=400,
+                        detail="Gemini API key required for HTML parsing. Set GEMINI_API_KEY environment variable or pass gemini_key parameter."
+                    )
+                
+                final_feed = htmlparser_scrapegraph.parse_html_to_feed(
+                    response.content.decode('utf-8', errors='ignore'), 
+                    url,
+                    gemini_api_key=api_key
+                )
+                source = "AI HTML parser (ScrapeGraphAI + Gemini)"
         else:
+            # Try parsing as XML or JSON
             try:
                 if 'xml' in content_type:
                     final_feed = parse_xml(response.content)
@@ -134,9 +179,21 @@ def parse_feed():
                 else:
                     raise ValueError("Unsupported content type")
             except Exception as e:
-                final_feed = htmlparser.parse_html_to_feed(response.content, url)
-                source = "HTML parser (fallback)"
+                # Fallback to AI HTML parser
+                if not api_key:
+                    raise HTTPException(
+                        status_code=400,
+                        detail="Gemini API key required for HTML parsing. Set GEMINI_API_KEY environment variable or pass gemini_key parameter."
+                    )
+                
+                final_feed = htmlparser_scrapegraph.parse_html_to_feed(
+                    response.content.decode('utf-8', errors='ignore'),
+                    url,
+                    gemini_api_key=api_key
+                )
+                source = "AI HTML parser (fallback)"
 
+        # Build feed metadata
         feed_metadata = {
             "title": final_feed.get('title', 'Untitled Feed'),
             "link": final_feed.get('link', url),
@@ -146,6 +203,7 @@ def parse_feed():
             "version": final_feed.get('version', '')
         }
 
+        # Sort entries by date
         sorted_entries = sorted(
             final_feed.get('entries', []),
             key=lambda entry: mktime(
@@ -160,10 +218,12 @@ def parse_feed():
             reverse=True
         )
 
+        # Format items
         items = []
-        for entry in sorted_entries[:5]:
+        for entry in sorted_entries[:10]:  # Return top 10 items
             content = format_content(
                 getattr(entry, 'content', [{}])[0].get('value', '') or 
+                entry.get('content', [{}])[0].get('value', '') if isinstance(entry.get('content', []), list) and entry.get('content') else
                 entry.get('summary', ''),
                 'html'
             )
@@ -178,11 +238,43 @@ def parse_feed():
                 "content": content
             })
 
-        return jsonify({
+        return {
             "feed": feed_metadata,
             "items": items,
             "source": source
-        })
+        }
 
+    except HTTPException:
+        raise
     except Exception as e:
-        return jsonify({"error": str(e)}), 500
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@parserapi.get("/health")
+async def health_check():
+    """Health check endpoint"""
+    return {
+        "status": "healthy",
+        "version": "2.0.0-fastapi-scrapegraph",
+        "gemini_configured": bool(GEMINI_API_KEY)
+    }
+
+
+@parserapi.get("/")
+async def root():
+    """Root endpoint with API information"""
+    return {
+        "name": "RSS Parser API",
+        "version": "2.0.0",
+        "description": "AI-powered feed parser with ScrapeGraphAI + Gemini",
+        "endpoints": {
+            "/parse": "Parse a feed from URL (GET)",
+            "/health": "Health check (GET)",
+            "/docs": "Interactive API documentation (Swagger UI)",
+            "/redoc": "Alternative API documentation (ReDoc)"
+        },
+        "usage": {
+            "example": "/parse?url=https://example.com",
+            "with_api_key": "/parse?url=https://example.com&gemini_key=your-key"
+        }
+    }

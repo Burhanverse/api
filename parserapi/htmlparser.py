@@ -1,220 +1,236 @@
-import re
-from selectolax.parser import HTMLParser
-from urllib.parse import urljoin, urlparse
+"""
+HTML Parser using ScrapeGraphAI with Gemini API
+This module extracts structured feed data from HTML pages using AI.
+"""
+
+import os
 from datetime import datetime
-import importlib
+from urllib.parse import urljoin, urlparse
+from scrapegraphai.graphs import SmartScraperGraph
+from typing import Dict, List, Any
 
-def parse_html_to_feed(html_content, base_url):
-    parsed_url = urlparse(base_url)
-    domain = parsed_url.netloc.lower()
 
-    custom_configs = {
-        'bbc.com': 'cfg.bbc',
-        'timesofindia.indiatimes.com': 'cfg.toi',
-        'economictimes.indiatimes.com': 'cfg.et',
-    }
+class ScrapeGraphHTMLParser:
+    """
+    Parser that uses ScrapeGraphAI with Gemini to extract feed data from HTML.
+    """
+    
+    def __init__(self, gemini_api_key: str = None):
+        """
+        Initialize the parser with Gemini API key.
+        
+        Args:
+            gemini_api_key: Google Gemini API key. If not provided, reads from GEMINI_API_KEY env var.
+        """
+        self.api_key = gemini_api_key or os.getenv('GEMINI_API_KEY')
+        if not self.api_key:
+            raise ValueError("Gemini API key is required. Set GEMINI_API_KEY environment variable or pass it directly.")
+        
+        # Configure ScrapeGraphAI with Gemini
+        self.graph_config = {
+            "llm": {
+                "api_key": self.api_key,
+                "model": "gemini-pro",
+            },
+            "verbose": False,
+            "headless": True,
+        }
+    
+    def parse_html_to_feed(self, html_content: str, base_url: str) -> Dict[str, Any]:
+        """
+        Parse HTML content into a feed structure using ScrapeGraphAI.
+        
+        Args:
+            html_content: Raw HTML content as string
+            base_url: Base URL of the page for resolving relative links
+            
+        Returns:
+            Dictionary containing feed metadata and entries
+        """
+        parsed_url = urlparse(base_url)
+        domain = parsed_url.netloc.lower()
+        
+        # Define the schema we want to extract
+        prompt = """
+        Extract the following information from this webpage:
+        
+        1. Feed metadata:
+           - title: The main title of the website/page
+           - language: The language code if available (e.g., 'en', 'es')
+           
+        2. Articles/Posts (extract all available):
+           For each article/post/blog entry, extract:
+           - title: The article title/headline
+           - link: The URL/link to the full article (can be relative or absolute)
+           - published: Publication date/time if available
+           - author: Author name if available
+           - summary: A brief summary or excerpt of the article
+           - content: The main content/body of the article (full HTML if available)
+           - tags: Any categories, tags, or keywords associated with the article
+           
+        Return the data as a structured JSON object with:
+        - feed_title: string
+        - feed_language: string
+        - articles: array of objects with the fields mentioned above
+        
+        Make sure to extract ALL visible articles/posts/blog entries from the page.
+        """
+        
+        try:
+            # Create the smart scraper
+            smart_scraper = SmartScraperGraph(
+                prompt=prompt,
+                source=html_content,
+                config=self.graph_config
+            )
+            
+            # Run the scraper
+            result = smart_scraper.run()
+            
+            # Process and structure the results
+            feed_data = self._structure_feed_data(result, base_url)
+            
+            return feed_data
+            
+        except Exception as e:
+            # Fallback to basic extraction if AI parsing fails
+            print(f"ScrapeGraphAI parsing failed: {str(e)}")
+            return self._fallback_parse(html_content, base_url)
+    
+    def _structure_feed_data(self, raw_result: Dict, base_url: str) -> Dict[str, Any]:
+        """
+        Structure the raw ScrapeGraphAI result into the expected feed format.
+        
+        Args:
+            raw_result: Raw result from ScrapeGraphAI
+            base_url: Base URL for resolving relative links
+            
+        Returns:
+            Structured feed dictionary
+        """
+        # Extract feed metadata
+        feed_title = raw_result.get('feed_title', 'Untitled Feed')
+        feed_language = raw_result.get('feed_language', '')
+        articles = raw_result.get('articles', [])
+        
+        # Process entries
+        entries = []
+        for article in articles:
+            # Resolve relative URLs
+            link = article.get('link', base_url)
+            if link and not link.startswith(('http://', 'https://')):
+                link = urljoin(base_url, link)
+            
+            # Get content
+            content_html = article.get('content', '')
+            summary = article.get('summary', '')
+            
+            # If no summary but has content, create one
+            if not summary and content_html:
+                # Strip HTML tags for summary
+                import re
+                summary_text = re.sub(r'<[^>]+>', '', content_html)
+                summary = (summary_text[:200] + '...') if len(summary_text) > 200 else summary_text
+            
+            # Process tags
+            tags_raw = article.get('tags', [])
+            if isinstance(tags_raw, str):
+                tags_raw = [tags_raw]
+            tags = [{'term': tag} for tag in tags_raw if tag]
+            
+            entry = {
+                'title': article.get('title', 'Untitled Entry'),
+                'link': link,
+                'published': article.get('published', ''),
+                'content': [{'value': content_html}] if content_html else [],
+                'summary': summary,
+                'author': article.get('author', ''),
+                'tags': tags
+            }
+            
+            entries.append(entry)
+        
+        # Construct the final feed
+        feed = {
+            'title': feed_title,
+            'link': base_url,
+            'description': '',
+            'language': feed_language,
+            'updated': datetime.now().isoformat(),
+            'entries': entries,
+            'version': 'html-scrapegraph'
+        }
+        
+        return feed
+    
+    def _fallback_parse(self, html_content: str, base_url: str) -> Dict[str, Any]:
+        """
+        Fallback parser when ScrapeGraphAI fails.
+        Uses basic BeautifulSoup parsing.
+        
+        Args:
+            html_content: Raw HTML content
+            base_url: Base URL
+            
+        Returns:
+            Basic feed structure
+        """
+        from bs4 import BeautifulSoup
+        
+        soup = BeautifulSoup(html_content, 'html.parser')
+        
+        # Extract basic metadata
+        title_tag = soup.find('title')
+        feed_title = title_tag.get_text(strip=True) if title_tag else 'Untitled Feed'
+        
+        html_tag = soup.find('html')
+        language = html_tag.get('lang', '') if html_tag else ''
+        
+        # Try to find articles
+        entries = []
+        article_tags = soup.find_all('article') or soup.find_all('div', class_=lambda x: x and 'post' in x.lower())
+        
+        for article in article_tags[:10]:  # Limit to 10 entries
+            title_elem = article.find(['h1', 'h2', 'h3'])
+            title = title_elem.get_text(strip=True) if title_elem else 'Untitled Entry'
+            
+            link_elem = article.find('a', href=True)
+            link = urljoin(base_url, link_elem['href']) if link_elem else base_url
+            
+            entry = {
+                'title': title,
+                'link': link,
+                'published': '',
+                'content': [{'value': str(article)}],
+                'summary': '',
+                'author': '',
+                'tags': []
+            }
+            entries.append(entry)
+        
+        return {
+            'title': feed_title,
+            'link': base_url,
+            'description': '',
+            'language': language,
+            'updated': datetime.now().isoformat(),
+            'entries': entries,
+            'version': 'html-fallback'
+        }
 
-    site_config = None
-    for key, mod_path in custom_configs.items():
-        if key in domain:
-            try:
-                site_config = importlib.import_module(mod_path)
-            except ImportError:
-                site_config = None
-            break
 
-    tree = HTMLParser(html_content)
-
-    html_node = tree.css('html')
-    language = html_node[0].attributes.get('lang', '') if html_node else ''
-
-    feed_title_elem = tree.css_first('title')
-    feed_title = feed_title_elem.text(strip=True) if feed_title_elem else 'Untitled Feed'
-
-    entries = []
-
-    # Common candidate article containers
-    if site_config and hasattr(site_config, "candidate_selectors"):
-        selectors = site_config.candidate_selectors
-    else:
-        selectors = [
-            'article',
-            '[itemtype*="Article"]',
-            '[class*="post"]',
-            '[id*="post"]',
-            '[class*="article"]',
-            '[class*="articles"]',
-            '[id*="article"]',
-            '[class*="entry"]',
-            '[id*="entry"]',
-            '[class*="story"]',
-            '[id*="story"]',
-            '[role="article"]'
-        ]
-
-    candidate_elements = []
-    for selector in selectors:
-        candidate_elements.extend(tree.css(selector))
-
-    seen = set()
-    unique_candidates = []
-    for elem in candidate_elements:
-        if id(elem) not in seen:
-            seen.add(id(elem))
-            unique_candidates.append(elem)
-
-    MIN_TEXT_LENGTH = 50
-    filtered_candidates = [cand for cand in unique_candidates if len(cand.text(strip=True)) >= MIN_TEXT_LENGTH]
-
-    if not filtered_candidates:
-        filtered_candidates = tree.css('body')
-
-    for candidate in filtered_candidates:
-        # --- Title Extraction ---
-        title = None
-        title_candidates = []
-
-        # Site-specific title extraction
-        if site_config and hasattr(site_config, "title_selector"):
-            title_elems = candidate.css(site_config.title_selector)
-            for elem in title_elems:
-                text = elem.text(strip=True)
-                if text:
-                    title_candidates.append(text)
-
-        # Common selectors in priority order
-        common_selectors = [
-            'h1', 'h2', 'h3',
-            '[itemprop="headline"]',
-            '[class*="post-card_title"]',
-            '.title', '.headline', '.entry-title',
-            'a[rel="bookmark"]'
-        ]
-        for selector in common_selectors:
-            elems = candidate.css(selector)
-            for elem in elems:
-                text = elem.text(strip=True)
-                if text:
-                    title_candidates.append(text)
-
-        # Aria-label attribute
-        aria_label = candidate.attributes.get('aria-label', '').strip()
-        if aria_label:
-            title_candidates.append(aria_label)
-
-        # Link texts within candidate
-        link_elems = candidate.css('a[href]')
-        for link in link_elems:
-            text = link.text(strip=True)
-            if text:
-                title_candidates.append(text)
-
-        # Remove duplicates while preserving order
-        seen_titles = set()
-        unique_title_candidates = []
-        for title in title_candidates:
-            if title not in seen_titles:
-                seen_titles.add(title)
-                unique_title_candidates.append(title)
-
-        if unique_title_candidates:
-            title = unique_title_candidates[0]
-        else:
-            # Fallback to document title and global h1
-            doc_title_elem = tree.css_first('title')
-            doc_title = doc_title_elem.text(strip=True) if doc_title_elem else ''
-            if doc_title:
-                separators = ['|', '-', '—', '•', '::', '–']
-                for sep in separators:
-                    if sep in doc_title:
-                        parts = doc_title.split(sep, 1)
-                        candidate_title = parts[0].strip()
-                        if candidate_title:
-                            title = candidate_title
-                            break
-                if not title:
-                    title = doc_title.strip()
-            else:
-                title = ''
-
-            # Check global h2 elements if still no title
-            if not title:
-                h2_elems = tree.css('h2')
-                for h2 in h2_elems:
-                    h2_text = h2.text(strip=True)
-                    if h2_text:
-                        title = h2_text
-                        break
-
-        # Final fallback
-        if not title:
-            title = 'Untitled Entry'
-
-        # --- Link Extraction ---
-        link = base_url
-        link_elem = candidate.css_first('a[href]')
-        if link_elem:
-            href = link_elem.attributes.get('href', '')
-            if href:
-                link = urljoin(base_url, href)
-
-        # --- Published Date Extraction ---
-        if site_config and hasattr(site_config, "date_selector"):
-            date_elem = candidate.css_first(site_config.date_selector)
-        else:
-            date_elem = candidate.css_first('time, [datetime], .date, .published, .posted-on')
-        published = ''
-        if date_elem:
-            datetime_attr = date_elem.attributes.get('datetime')
-            published = datetime_attr if datetime_attr else date_elem.text(strip=True)
-
-        # --- Content Extraction ---
-        if site_config and hasattr(site_config, "content_selector"):
-            content_elem = candidate.css_first(site_config.content_selector)
-        else:
-            content_elem = candidate.css_first('[itemprop="articleBody"], .content, .entry-content, .post-content')
-        if content_elem:
-            content_html = content_elem.html
-        else:
-            content_html = candidate.html
-
-        # --- Author Extraction ---
-        if site_config and hasattr(site_config, "author_selector"):
-            author_elem = candidate.css_first(site_config.author_selector)
-        else:
-            author_elem = candidate.css_first('[itemprop="author"], .author, .byline')
-        author = author_elem.text(strip=True) if author_elem else ''
-
-        # --- Tags Extraction ---
-        if site_config and hasattr(site_config, "tag_selector"):
-            tag_elems = candidate.css(site_config.tag_selector)
-        else:
-            tag_elems = candidate.css('[rel="tag"], .category, .tag')
-        tags = [{'term': tag.text(strip=True)} for tag in tag_elems if tag.text(strip=True)]
-
-        # --- Summary Creation ---
-        summary_text = re.sub(r'<[^>]+>', '', content_html) if content_html else ''
-        summary = (summary_text[:200] + '...') if summary_text and len(summary_text) > 200 else summary_text
-
-        entries.append({
-            'title': title,
-            'link': link,
-            'published': published,
-            'content': [{'value': content_html}],
-            'summary': summary,
-            'author': author,
-            'tags': tags
-        })
-
-    # --- Final Feed Assembly ---
-    feed = {
-        'title': feed_title,
-        'link': base_url,
-        'description': '',
-        'language': language,
-        'updated': datetime.now().isoformat(),
-        'entries': entries,
-        'version': 'html'
-    }
-
-    return feed
+# Module-level function for backward compatibility
+def parse_html_to_feed(html_content: str, base_url: str, gemini_api_key: str = None) -> Dict[str, Any]:
+    """
+    Parse HTML content to feed format using ScrapeGraphAI.
+    
+    Args:
+        html_content: Raw HTML content
+        base_url: Base URL of the page
+        gemini_api_key: Optional Gemini API key
+        
+    Returns:
+        Structured feed dictionary
+    """
+    parser = ScrapeGraphHTMLParser(gemini_api_key=gemini_api_key)
+    return parser.parse_html_to_feed(html_content, base_url)
