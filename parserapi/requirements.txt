@@ -1,18 +1,18 @@
+# Core API framework
 fastapi
-uvicorn[standard]
-git+https://github.com/kurtmckee/feedparser.git@main#egg=feedparser
-listparser 
-lxml 
-pillow 
-beautifulsoup4 
-rapidfuzz 
-emoji 
-minify-html 
-minify-html-onepass 
-requests
-selectolax
+uvicorn
 
-# ScrapeGraphAI dependencies
-scrapegraphai[other]
-google-generativeai
+# RSS parsing
+git+https://github.com/kurtmckee/feedparser.git@main#egg=feedparser
+
+# XML parsing
+lxml
+
+# Content processing
+emoji
+minify-html
+requests
+
+# AI-powered scraping
+scrapegraphai
 playwright
