@@ -36,18 +36,28 @@ echo "✓ pip OK"
 echo ""
 
 # Check for GEMINI_API_KEY in .env file or environment
-if [ -f .env ]; then
+# Look for .env in parent directory (root) first, then local
+if [ -f ../.env ]; then
+    echo "✓ .env file found in root"
+    set -a  # automatically export all variables
+    source ../.env
+    set +a
+elif [ -f .env ]; then
     echo "✓ .env file found"
+    set -a  # automatically export all variables
     source .env
-elif [ -z "$GEMINI_API_KEY" ]; then
+    set +a
+fi
+
+if [ -z "$GEMINI_API_KEY" ]; then
     echo "⚠️  GEMINI_API_KEY not set"
     echo ""
     echo "You need a Gemini API key to use AI parsing."
     echo "Get one from: https://makersuite.google.com/app/apikey"
     echo ""
-    echo "After getting your key, create a .env file:"
-    echo "  cp .env.example .env"
-    echo "  # Then edit .env and add your API key"
+    echo "After getting your key, add it to your .env file:"
+    echo "  echo 'GEMINI_API_KEY=your-api-key-here' >> ../.env"
+    echo "  echo 'GEMINI_MODEL=gemini-2.5-flash-exp' >> ../.env"
     echo ""
     read -p "Press Enter to continue without API key (you can set it later)..."
 else

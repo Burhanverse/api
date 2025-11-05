@@ -16,7 +16,9 @@ class ParserConfig:
         
     def _load_env(self):
         """Load environment variables from .env file if it exists"""
-        env_file = Path(__file__).parent.parent.parent / '.env'
+        # Look for .env in root directory (3 levels up from this file)
+        # Path structure: api/parserapi/htmlparser/config.py -> root
+        env_file = Path(__file__).parent.parent.parent.parent / '.env'
         if env_file.exists():
             with open(env_file, 'r') as f:
                 for line in f:

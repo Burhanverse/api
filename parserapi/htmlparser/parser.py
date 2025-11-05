@@ -5,7 +5,14 @@ Core parser implementation using ScrapeGraphAI
 import os
 from datetime import datetime
 from urllib.parse import urljoin, urlparse
-from scrapegraphai.graphs import SmartScraperGraph
+try:
+    from scrapegraphai.graphs import SmartScraperGraph
+    _SCRAPEGRAPHAI_AVAILABLE = True
+except Exception:
+    # Don't fail import-time if scrapegraphai (or its deps like langchain)
+    # aren't available. We'll fall back to the simpler parser at runtime.
+    SmartScraperGraph = None
+    _SCRAPEGRAPHAI_AVAILABLE = False
 from typing import Dict, List, Any, Optional
 
 from .config import config
@@ -45,26 +52,33 @@ class ScrapeGraphHTMLParser:
         Returns:
             Dictionary containing feed metadata and entries
         """
+        # If ScrapeGraphAI isn't available at import time (missing deps
+        # like langchain), or if creating/running the smart scraper fails,
+        # fall back to the simpler HTML extraction to avoid crashing the
+        # whole API server at import.
+        if not _SCRAPEGRAPHAI_AVAILABLE or SmartScraperGraph is None:
+            return fallback_parse(html_content, base_url)
+
         try:
             # Get the appropriate prompt
             prompt = get_prompt()
-            
+
             # Create the smart scraper
             smart_scraper = SmartScraperGraph(
                 prompt=prompt,
                 source=html_content,
                 config=self.graph_config
             )
-            
+
             # Run the scraper
             result = smart_scraper.run()
-            
+
             # Process and structure the results
             feed_data = structure_feed_data(result, base_url, config.max_articles)
-            
+
             return feed_data
-            
-        except Exception as e:
+
+        except Exception:
             # Fallback to basic extraction if AI parsing fails
             return fallback_parse(html_content, base_url)
 
