@@ -114,6 +114,76 @@ def format_content(content, content_type='html'):
         return minify(content, minify_js=True, minify_css=True)
     return demojize(content)
 
+def extract_title(entry):
+    """Extract title from entry with multiple fallbacks"""
+    # Try direct title field
+    if entry.get('title') and entry.get('title').strip():
+        return entry.get('title').strip()
+    
+    # Try summary/description
+    summary = entry.get('summary', '') or entry.get('description', '')
+    if summary:
+        # Extract first line or sentence
+        from html.parser import HTMLParser
+        
+        class HTMLTextExtractor(HTMLParser):
+            def __init__(self):
+                super().__init__()
+                self.text = []
+            def handle_data(self, data):
+                self.text.append(data)
+        
+        parser = HTMLTextExtractor()
+        try:
+            parser.feed(summary)
+            text = ' '.join(parser.text).strip()
+            if text:
+                # Get first sentence or first 100 chars
+                first_sentence = text.split('.')[0].strip()
+                if len(first_sentence) > 10 and len(first_sentence) < 150:
+                    return first_sentence
+                elif len(text) > 10:
+                    return text[:100].strip() + ('...' if len(text) > 100 else '')
+        except:
+            pass
+    
+    # Try content field
+    content = entry.get('content', [{}])[0].get('value', '') if isinstance(entry.get('content', []), list) else ''
+    if content:
+        try:
+            parser = HTMLTextExtractor()
+            parser.feed(content)
+            text = ' '.join(parser.text).strip()
+            if text:
+                first_sentence = text.split('.')[0].strip()
+                if len(first_sentence) > 10 and len(first_sentence) < 150:
+                    return first_sentence
+                elif len(text) > 10:
+                    return text[:100].strip() + ('...' if len(text) > 100 else '')
+        except:
+            pass
+    
+    # Try extracting from URL
+    link = entry.get('link', '')
+    if link:
+        # Get the last part of URL and clean it up
+        from urllib.parse import urlparse, unquote
+        path = urlparse(link).path
+        if path:
+            # Get last segment
+            segments = [s for s in path.split('/') if s]
+            if segments:
+                title = segments[-1]
+                # Clean up common patterns
+                title = unquote(title)
+                title = title.replace('_', ' ').replace('-', ' ')
+                # Remove file extensions
+                title = title.rsplit('.', 1)[0] if '.' in title else title
+                if len(title) > 10:
+                    return title.title()
+    
+    return 'Untitled Entry'
+
 @parserapi.get("/parse")
 async def parse_feed(
     url: str = Query(..., description="The URL to parse")
@@ -183,14 +253,14 @@ async def parse_feed(
             reverse=True
         )
 
-        # Format items - only return title and link
+        # Format response - return simplified structure
         items = []
-        for entry in sorted_entries[:5]:  # Return top 5 items
+        for entry in sorted_entries[:5]:  # Limit to top 5 items
             items.append({
-                "title": entry.get('title', 'Untitled'),
-                "link": entry.get('link', '')
+                'title': extract_title(entry),
+                'link': entry.get('link', '')
             })
-
+        
         return items
 
     except HTTPException:
