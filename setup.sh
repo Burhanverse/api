@@ -21,7 +21,7 @@ if ! command -v $PIP_CMD &> /dev/null; then
 fi
 
 echo "Installing Python packages..."
-$PIP_CMD install -r parserapi/requirements.txt
+$PIP_CMD install -r requirements.txt
 
 echo "Installing Playwright browsers..."
 $PYTHON_CMD -m playwright install chromium
