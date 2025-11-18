@@ -118,99 +118,108 @@ def extract_title(entry):
     """Extract title from entry with multiple fallbacks"""
     from lxml import html as lxml_html
     from urllib.parse import urlparse, unquote
+    import re
     
     # Try direct title field
     if entry.get('title') and entry.get('title').strip():
         return entry.get('title').strip()
     
-    # Article selectors to find title in HTML content
-    selectors = [
-        'article',
-        '[itemtype*="Article"]',
-        '[class*="post"]',
-        '[id*="post"]',
-        '[class*="article"]',
-        '[class*="articles"]',
-        '[id*="article"]',
-        '[class*="entry"]',
-        '[id*="entry"]',
-        '[class*="story"]',
-        '[id*="story"]',
-        '[role="article"]'
-    ]
+    def extract_from_html(html_content):
+        """Extract title from HTML content"""
+        if not html_content:
+            return None
+            
+        try:
+            tree = lxml_html.fromstring(html_content)
+            
+            # Priority 1: Try all heading tags directly (h1-h6)
+            for tag in ['h1', 'h2', 'h3', 'h4', 'h5', 'h6']:
+                headings = tree.xpath(f'.//{tag}')
+                for h in headings:
+                    text = h.text_content().strip()
+                    if text and 10 < len(text) < 200:
+                        return text
+            
+            # Priority 2: Try common title class names
+            title_classes = [
+                "//*[contains(@class, 'title')]",
+                "//*[contains(@class, 'headline')]",
+                "//*[contains(@class, 'entry-title')]",
+                "//*[contains(@class, 'post-title')]",
+                "//*[contains(@class, 'article-title')]",
+            ]
+            for xpath in title_classes:
+                elements = tree.xpath(xpath)
+                for elem in elements:
+                    text = elem.text_content().strip()
+                    if text and 10 < len(text) < 200:
+                        return text
+            
+            # Priority 3: Look inside article/post containers
+            containers = tree.xpath('//article | //*[contains(@class, "post")] | //*[contains(@class, "entry")] | //*[contains(@class, "story")]')
+            for container in containers:
+                # Try headings inside containers
+                for tag in ['h1', 'h2', 'h3', 'h4', 'h5', 'h6']:
+                    headings = container.xpath(f'.//{tag}')
+                    for h in headings:
+                        text = h.text_content().strip()
+                        if text and 10 < len(text) < 200:
+                            return text
+            
+            # Priority 4: Get first substantial text (fallback)
+            text = tree.text_content().strip()
+            if text:
+                # Remove extra whitespace
+                text = re.sub(r'\s+', ' ', text)
+                # Try to get first sentence
+                sentences = re.split(r'[.!?]\s+', text)
+                for sentence in sentences:
+                    if 10 < len(sentence) < 150:
+                        return sentence
+                # Or just first 100 chars
+                if len(text) > 10:
+                    return text[:100].strip() + ('...' if len(text) > 100 else '')
+        except Exception as e:
+            pass
+        
+        return None
     
-    # Try summary/description with CSS selectors
+    # Try summary/description field
     summary = entry.get('summary', '') or entry.get('description', '')
     if summary:
-        try:
-            tree = lxml_html.fromstring(summary)
-            
-            # Try to find title using selectors
-            for selector in selectors:
-                elements = tree.cssselect(selector)
-                if elements:
-                    # Look for h1-h6 or title-like elements
-                    for elem in elements:
-                        for heading in ['h1', 'h2', 'h3', 'h4', 'h5', 'h6', '.title', '[class*="title"]', '[class*="headline"]']:
-                            title_elem = elem.cssselect(heading)
-                            if title_elem:
-                                text = title_elem[0].text_content().strip()
-                                if len(text) > 10 and len(text) < 200:
-                                    return text
-            
-            # Fallback to plain text extraction
-            text = tree.text_content().strip()
-            if text:
-                first_sentence = text.split('.')[0].strip()
-                if len(first_sentence) > 10 and len(first_sentence) < 150:
-                    return first_sentence
-                elif len(text) > 10:
-                    return text[:100].strip() + ('...' if len(text) > 100 else '')
-        except:
-            pass
+        title = extract_from_html(summary)
+        if title:
+            return title
     
-    # Try content field with CSS selectors
-    content = entry.get('content', [{}])[0].get('value', '') if isinstance(entry.get('content', []), list) else ''
-    if content:
-        try:
-            tree = lxml_html.fromstring(content)
-            
-            # Try to find title using selectors
-            for selector in selectors:
-                elements = tree.cssselect(selector)
-                if elements:
-                    for elem in elements:
-                        for heading in ['h1', 'h2', 'h3', 'h4', 'h5', 'h6', '.title', '[class*="title"]', '[class*="headline"]']:
-                            title_elem = elem.cssselect(heading)
-                            if title_elem:
-                                text = title_elem[0].text_content().strip()
-                                if len(text) > 10 and len(text) < 200:
-                                    return text
-            
-            # Fallback to plain text
-            text = tree.text_content().strip()
-            if text:
-                first_sentence = text.split('.')[0].strip()
-                if len(first_sentence) > 10 and len(first_sentence) < 150:
-                    return first_sentence
-                elif len(text) > 10:
-                    return text[:100].strip() + ('...' if len(text) > 100 else '')
-        except:
-            pass
+    # Try content field
+    content_list = entry.get('content', [])
+    if isinstance(content_list, list) and content_list:
+        content = content_list[0].get('value', '')
+        if content:
+            title = extract_from_html(content)
+            if title:
+                return title
     
-    # Try extracting from URL
+    # Try extracting from URL as last resort
     link = entry.get('link', '')
     if link:
-        path = urlparse(link).path
-        if path:
-            segments = [s for s in path.split('/') if s]
-            if segments:
-                title = segments[-1]
-                title = unquote(title)
-                title = title.replace('_', ' ').replace('-', ' ')
-                title = title.rsplit('.', 1)[0] if '.' in title else title
-                if len(title) > 10:
-                    return title.title()
+        try:
+            path = urlparse(link).path
+            if path:
+                segments = [s for s in path.split('/') if s]
+                if segments:
+                    title = segments[-1]
+                    title = unquote(title)
+                    # Remove file extension
+                    title = title.rsplit('.', 1)[0] if '.' in title else title
+                    # Clean up slug
+                    title = title.replace('_', ' ').replace('-', ' ')
+                    # Remove numbers at start if present
+                    title = re.sub(r'^\d+\s*', '', title)
+                    if len(title) > 10:
+                        return title.title()
+        except:
+            pass
     
     return 'Untitled Entry'
 
