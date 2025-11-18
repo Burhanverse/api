@@ -124,7 +124,7 @@ async def parse_feed(
                     response.content.decode('utf-8', errors='ignore'),
                     url
                 )
-                source = "AI HTML parser (fallback)"
+                source = " XML parser (rss/xml/json fallback)"
 
         # Build feed metadata
         feed_metadata = {
@@ -151,31 +151,15 @@ async def parse_feed(
             reverse=True
         )
 
-        # Format items
+        # Format items - only return title and link
         items = []
-        for entry in sorted_entries[:10]:  # Return top 10 items
-            content = format_content(
-                getattr(entry, 'content', [{}])[0].get('value', '') or 
-                entry.get('content', [{}])[0].get('value', '') if isinstance(entry.get('content', []), list) and entry.get('content') else
-                entry.get('summary', ''),
-                'html'
-            )
-
+        for entry in sorted_entries[:5]:  # Return top 5 items
             items.append({
                 "title": entry.get('title', 'Untitled'),
-                "link": entry.get('link', ''),
-                "published": entry.get('published', entry.get('date', '')),
-                "summary": format_content(entry.get('summary', ''), 'text'),
-                "author": entry.get('author', 'Unknown'),
-                "categories": [tag.get('term') for tag in entry.get('tags', [])],
-                "content": content
+                "link": entry.get('link', '')
             })
 
-        return {
-            "feed": feed_metadata,
-            "items": items,
-            "source": source
-        }
+        return items
 
     except HTTPException:
         raise
