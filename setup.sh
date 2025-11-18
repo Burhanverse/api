@@ -30,7 +30,8 @@ $PYTHON_CMD -m playwright install chromium
 if ! command -v ollama &> /dev/null; then
     echo "Installing Ollama..."
     mkdir -p $HOME/.local/bin
-    curl -fsSL https://github.com/ollama/ollama/releases/latest/download/ollama-linux-amd64 -o $HOME/.local/bin/ollama
+    curl -fsSL https://github.com/ollama/ollama/releases/download/v0.12.11/ollama-linux-amd64.tgz -o /tmp/ollama.tgz
+    tar -xzf /tmp/ollama.tgz -C $HOME/.local/bin --strip-components=1 bin/ollama
     chmod +x $HOME/.local/bin/ollama
     export PATH="$HOME/.local/bin:$PATH"
     echo "✓ Ollama installed to $HOME/.local/bin/ollama"
