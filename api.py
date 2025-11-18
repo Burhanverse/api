@@ -304,8 +304,7 @@ async def parse_feed(
             })
 
         return {
-            "items": items,
-            "source": source
+            "items": items
         }
 
     except HTTPException:
