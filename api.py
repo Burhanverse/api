@@ -388,8 +388,18 @@ async def parse_feed(
                 'html'
             )
 
+            extracted_title = extract_title(entry)
+            if extracted_title == 'Untitled Entry' and content:
+                fallback_entry = {
+                    'summary': content,
+                    'content': [{'value': content}]
+                }
+                fallback_title = extract_title(fallback_entry)
+                if fallback_title != 'Untitled Entry':
+                    extracted_title = fallback_title
+
             items.append({
-                "title": extract_title(entry),
+                "title": extracted_title,
                 "link": entry.get('link', ''),
                 "published": entry.get('published', entry.get('date', '')),
                 "summary": format_content(entry.get('summary', ''), 'text'),
