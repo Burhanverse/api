@@ -5,7 +5,7 @@ AI-powered content extraction using Google Gemini
 
 from fastapi import FastAPI, Query, HTTPException
 import feedparser
-from . import htmlparser
+import htmlparser
 import requests
 import time
 from time import mktime

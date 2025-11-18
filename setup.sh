@@ -55,4 +55,4 @@ sleep 2
 echo ""
 echo "✅ Setup complete!"
 echo "Starting API server on 0.0.0.0:2058..."
-$PYTHON_CMD -m uvicorn api:app --host 0.0.0.0 --port 2058
+$PYTHON_CMD -m uvicorn api:parserapi --host 0.0.0.0 --port 2058
