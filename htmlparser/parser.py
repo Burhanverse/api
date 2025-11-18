@@ -22,24 +22,21 @@ from .utils import structure_feed_data, fallback_parse
 
 class ScrapeGraphHTMLParser:
     """
-    Parser that uses ScrapeGraphAI with Gemini to extract feed data from HTML.
+    Parser that uses ScrapeGraphAI with Ollama to extract feed data from HTML.
     """
     
-    def __init__(self, gemini_api_key: Optional[str] = None):
+    def __init__(self, ollama_base_url: Optional[str] = None, ollama_model: Optional[str] = None):
         """
-        Initialize the parser with Gemini API key.
+        Initialize the parser with Ollama configuration.
         
         Args:
-            gemini_api_key: Google Gemini API key. If not provided, uses config.
+            ollama_base_url: Ollama base URL. If not provided, uses config.
+            ollama_model: Ollama model name. If not provided, uses config.
         """
-        self.api_key = gemini_api_key or config.gemini_api_key
-        if not self.api_key:
-            raise ValueError(
-                "Gemini API key is required. "
-                "Set GEMINI_API_KEY environment variable or pass it directly."
-            )
+        self.base_url = ollama_base_url or config.ollama_base_url
+        self.model = ollama_model or config.ollama_model
         
-        self.graph_config = config.get_graph_config(self.api_key)
+        self.graph_config = config.get_graph_config(self.base_url, self.model)
     
     def parse_html_to_feed(self, html_content: str, base_url: str) -> Dict[str, Any]:
         """
@@ -86,18 +83,20 @@ class ScrapeGraphHTMLParser:
 def parse_html_to_feed(
     html_content: str, 
     base_url: str, 
-    gemini_api_key: Optional[str] = None
+    ollama_base_url: Optional[str] = None,
+    ollama_model: Optional[str] = None
 ) -> Dict[str, Any]:
     """
-    Parse HTML content to feed format using ScrapeGraphAI.
+    Parse HTML content to feed format using ScrapeGraphAI with Ollama.
     
     Args:
         html_content: Raw HTML content
         base_url: Base URL of the page
-        gemini_api_key: Optional Gemini API key
+        ollama_base_url: Optional Ollama base URL
+        ollama_model: Optional Ollama model name
         
     Returns:
         Structured feed dictionary
     """
-    parser = ScrapeGraphHTMLParser(gemini_api_key=gemini_api_key)
+    parser = ScrapeGraphHTMLParser(ollama_base_url=ollama_base_url, ollama_model=ollama_model)
     return parser.parse_html_to_feed(html_content, base_url)

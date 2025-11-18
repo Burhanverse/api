@@ -29,34 +29,35 @@ class ParserConfig:
                             os.environ[key.strip()] = value.strip().strip('"').strip("'")
     
     @property
-    def gemini_api_key(self) -> Optional[str]:
-        """Get Gemini API key"""
-        return os.getenv('GEMINI_API_KEY')
+    def ollama_base_url(self) -> str:
+        """Get Ollama base URL (default: http://localhost:11434)"""
+        return os.getenv('OLLAMA_BASE_URL', 'http://localhost:11434')
     
     @property
-    def gemini_model(self) -> str:
-        """Get Gemini model (default: gemini-2.5-flash-exp)"""
-        return os.getenv('GEMINI_MODEL', 'gemini-2.5-flash-exp')
+    def ollama_model(self) -> str:
+        """Get Ollama model (default: llama3.2:3b)"""
+        return os.getenv('OLLAMA_MODEL', 'llama3.2:3b')
     
     @property
     def max_articles(self) -> int:
         """Maximum articles to extract (default: 2)"""
         return int(os.getenv('PARSER_MAX_ARTICLES', '2'))
     
-    def get_graph_config(self, api_key: Optional[str] = None) -> dict:
+    def get_graph_config(self, base_url: Optional[str] = None, model: Optional[str] = None) -> dict:
         """
-        Get ScrapeGraphAI configuration
+        Get ScrapeGraphAI configuration for Ollama
         
         Args:
-            api_key: Optional API key override
+            base_url: Optional Ollama base URL override
+            model: Optional model name override
             
         Returns:
             Configuration dictionary
         """
         return {
             "llm": {
-                "api_key": api_key or self.gemini_api_key,
-                "model": self.gemini_model,
+                "model": f"ollama/{model or self.ollama_model}",
+                "base_url": base_url or self.ollama_base_url,
             },
             "verbose": False,
             "headless": True,

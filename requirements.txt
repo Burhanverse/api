@@ -14,7 +14,8 @@ minify-html
 requests
 
 # AI-powered scraping
-langchain>=0.3.0
-langchain-core>=0.3.0
+langchain
+langchain-core
+langchain-ollama
 scrapegraphai
 playwright

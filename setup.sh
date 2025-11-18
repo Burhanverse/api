@@ -1,120 +1,51 @@
 #!/usr/bin/env bash
-# Quick setup script for FastAPI + ScrapeGraphAI Parser
+# Quick setup script for FastAPI + ScrapeGraphAI Parser with Ollama
 # Run with: bash setup.sh or ./setup.sh
 
-set -e  # Exit on error
+set -e
 
-echo "🚀 Setting up FastAPI + ScrapeGraphAI Parser"
-echo "============================================="
-echo ""
+export PATH="$HOME/.local/bin:$PATH"
 
-# Set Python and pip commands to use 3.12
+echo "🚀 Setting up Parser with Ollama"
+
 PYTHON_CMD="python3.12"
 PIP_CMD="pip3.12"
 
-# Check if python3.12 is available
-echo "📌 Checking Python 3.12..."
 if ! command -v $PYTHON_CMD &> /dev/null; then
-    echo "❌ python3.12 not found"
-    echo "   Please install Python 3.12 first"
-    exit 1
+    PYTHON_CMD="python3"
+    PIP_CMD="pip3"
 fi
 
-python_version=$($PYTHON_CMD --version 2>&1 | grep -oP '\d+\.\d+\.\d+')
-echo "   Python version: $python_version"
-echo "✓ Python 3.12 OK"
-echo ""
-
-# Check if pip3.12 is available
-echo "📌 Checking pip3.12..."
 if ! command -v $PIP_CMD &> /dev/null; then
-    echo "❌ pip3.12 not found"
-    echo "   Trying to use: $PYTHON_CMD -m pip instead"
     PIP_CMD="$PYTHON_CMD -m pip"
 fi
-echo "✓ pip OK"
-echo ""
 
-# Check for GEMINI_API_KEY in .env file or environment
-# Look for .env in parent directory (root) first, then local
-if [ -f ../.env ]; then
-    echo "✓ .env file found in root"
-    set -a  # automatically export all variables
-    source ../.env
-    set +a
-elif [ -f .env ]; then
-    echo "✓ .env file found"
-    set -a  # automatically export all variables
-    source .env
-    set +a
-fi
-
-if [ -z "$GEMINI_API_KEY" ]; then
-    echo "⚠️  GEMINI_API_KEY not set"
-    echo ""
-    echo "You need a Gemini API key to use AI parsing."
-    echo "Get one from: https://makersuite.google.com/app/apikey"
-    echo ""
-    echo "After getting your key, add it to your .env file:"
-    echo "  echo 'GEMINI_API_KEY=your-api-key-here' >> ../.env"
-    echo "  echo 'GEMINI_MODEL=gemini-2.5-flash-exp' >> ../.env"
-    echo ""
-    read -p "Press Enter to continue without API key (you can set it later)..."
-else
-    echo "✓ GEMINI_API_KEY found"
-fi
-echo ""
-
-# Install Python dependencies
-echo "📦 Installing Python packages..."
+echo "Installing Python packages..."
 $PIP_CMD install -r parserapi/requirements.txt
 
-if [ $? -ne 0 ]; then
-    echo "❌ Failed to install Python packages"
-    exit 1
+echo "Installing Playwright browsers..."
+$PYTHON_CMD -m playwright install chromium
+
+# Install Ollama if not present
+if ! command -v ollama &> /dev/null; then
+    echo "Installing Ollama..."
+    curl -fsSL https://ollama.ai/install.sh | sh
 fi
-echo "✓ Python packages installed"
-echo ""
 
-# Install Playwright browsers
-echo "🌐 Installing Playwright browsers (this may take a while)..."
-$PYTHON_CMD -m playwright install
-
-if [ $? -ne 0 ]; then
-    echo "❌ Failed to install Playwright browsers"
-    exit 1
+# Start Ollama in background if not running
+if ! curl -s http://localhost:11434/api/tags &> /dev/null; then
+    echo "Starting Ollama..."
+    ollama serve &> /dev/null &
+    sleep 3
 fi
-echo "✓ Playwright browsers installed"
-echo ""
 
-# Summary
-echo "============================================="
+# Pull llama3.2:3b model
+if ! ollama list | grep -q "llama3.2:3b"; then
+    echo "Pulling llama3.2:3b model..."
+    ollama pull llama3.2:3b
+fi
+
+echo ""
 echo "✅ Setup complete!"
-echo "============================================="
-echo ""
-echo "Next steps:"
-echo ""
-
-if [ -z "$GEMINI_API_KEY" ]; then
-    echo "1. Get your Gemini API key:"
-    echo "   → https://makersuite.google.com/app/apikey"
-    echo ""
-    echo "2. Create .env file and set the API key:"
-    echo "   cp .env.example .env"
-    echo "   # Edit .env and add: GEMINI_API_KEY=your-api-key"
-    echo ""
-    echo "3. Start the server:"
-else
-    echo "1. Start the server:"
-fi
-
-echo "   $PYTHON_CMD -m parserapi"
-echo ""
-echo "2. Open the interactive API docs:"
-echo "   → http://localhost:5000/docs"
-echo ""
-echo "3. Test with curl:"
-echo '   curl "http://localhost:5000/parse?url=https://techcrunch.com"'
-echo ""
-echo "For more info, see README.md or PRODUCTION_READY.md"
-echo ""
+echo "Starting API server on 0.0.0.0:2058..."
+$PYTHON_CMD -m uvicorn parserapi.api:app --host 0.0.0.0 --port 2058
