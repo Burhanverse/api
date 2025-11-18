@@ -180,18 +180,6 @@ def extract_title(entry):
             if doc_title:
                 return doc_title
 
-            # Priority 1: attribute-based hints
-            attr_selectors = [
-                'string(//*[@aria-label][1]/@aria-label)',
-                'string(//*[@data-title][1]/@data-title)',
-                'string(//*[@title][1]/@title)'
-            ]
-            for selector in attr_selectors:
-                value = tree.xpath(selector)
-                title = clean_title(value)
-                if title:
-                    return title
-            
             # Priority 1: Try all heading tags directly (h1-h6)
             for tag in ['h1', 'h2', 'h3', 'h4', 'h5', 'h6']:
                 headings = tree.xpath(f'.//{tag}')
@@ -225,6 +213,18 @@ def extract_title(entry):
                         title = clean_title(h.text_content())
                         if title:
                             return title
+
+            # Priority 3.4: attribute-based hints (lower priority to avoid dates)
+            attr_selectors = [
+                'string(//*[@aria-label][1]/@aria-label)',
+                'string(//*[@data-title][1]/@data-title)',
+                'string(//*[@title][1]/@title)'
+            ]
+            for selector in attr_selectors:
+                value = tree.xpath(selector)
+                title = clean_title(value)
+                if title:
+                    return title
 
             # Priority 3.5: first substantial paragraph text
             paragraph = clean_title(tree.xpath('string(//p[normalize-space()][1])'))
