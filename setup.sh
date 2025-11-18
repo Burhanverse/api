@@ -26,10 +26,13 @@ $PIP_CMD install -r requirements.txt
 echo "Installing Playwright browsers..."
 $PYTHON_CMD -m playwright install chromium
 
-# Install Ollama if not present
+# Install Ollama if not present (user-level installation for Pterodactyl)
 if ! command -v ollama &> /dev/null; then
     echo "Installing Ollama..."
-    curl -fsSL https://ollama.ai/install.sh | sh
+    mkdir -p $HOME/.local/bin
+    curl -L https://ollama.ai/download/ollama-linux-amd64 -o $HOME/.local/bin/ollama
+    chmod +x $HOME/.local/bin/ollama
+    export PATH="$HOME/.local/bin:$PATH"
 fi
 
 # Start Ollama in background if not running
