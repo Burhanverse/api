@@ -149,9 +149,9 @@ def extract_title(entry):
             for selector in selectors:
                 elements = tree.cssselect(selector)
                 if elements:
-                    # Look for h1, h2, h3, or title-like elements
+                    # Look for h1-h6 or title-like elements
                     for elem in elements:
-                        for heading in ['h1', 'h2', 'h3', '.title', '[class*="title"]', '[class*="headline"]']:
+                        for heading in ['h1', 'h2', 'h3', 'h4', 'h5', 'h6', '.title', '[class*="title"]', '[class*="headline"]']:
                             title_elem = elem.cssselect(heading)
                             if title_elem:
                                 text = title_elem[0].text_content().strip()
@@ -180,7 +180,7 @@ def extract_title(entry):
                 elements = tree.cssselect(selector)
                 if elements:
                     for elem in elements:
-                        for heading in ['h1', 'h2', 'h3', '.title', '[class*="title"]', '[class*="headline"]']:
+                        for heading in ['h1', 'h2', 'h3', 'h4', 'h5', 'h6', '.title', '[class*="title"]', '[class*="headline"]']:
                             title_elem = elem.cssselect(heading)
                             if title_elem:
                                 text = title_elem[0].text_content().strip()
@@ -305,7 +305,7 @@ async def parse_feed(
 
         return {
             "items": items,
-            "source": feed_metadata
+            "source": source
         }
 
     except HTTPException:
