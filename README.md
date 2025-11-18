@@ -52,9 +52,8 @@ uvicorn parserapi.api:parserapi --host 0.0.0.0 --port 5000
 ```
 
 The API will be available at:
-- **API Endpoint**: http://localhost:5000
-- **Interactive Docs (Swagger UI)**: http://localhost:5000/docs
-- **Alternative Docs (ReDoc)**: http://localhost:5000/redoc
+- **API Endpoint**: http://localhost:2058
+- **Interactive Docs (Swagger UI)**: http://localhost:2058/docs
 
 ## 📖 API Usage
 
@@ -270,13 +269,9 @@ CMD ["uvicorn", "parserapi.api:parserapi", "--host", "0.0.0.0", "--port", "5000"
 
 FastAPI provides automatic interactive documentation:
 
-- **Swagger UI**: http://localhost:5000/docs
+- **Swagger UI**: http://localhost:2058/docs
   - Try out the API directly in your browser
   - See all parameters and response schemas
-  
-- **ReDoc**: http://localhost:5000/redoc
-  - Alternative documentation format
-  - Better for reading and understanding
 
 ## 🎓 Advanced Usage
 

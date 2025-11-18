@@ -43,8 +43,7 @@ curl "http://localhost:5000/parse?url=https://techcrunch.com"
 ## 🎯 What You Get
 
 ### Automatic API Documentation
-- **Swagger UI**: http://localhost:5000/docs
-- **ReDoc**: http://localhost:5000/redoc
+- **Swagger UI**: http://localhost:2058/docs
 - Try the API directly in your browser!
 
 ### AI-Powered Parsing

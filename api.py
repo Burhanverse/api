@@ -18,9 +18,10 @@ import os
 from typing import Optional
 
 parserapi = FastAPI(
-    title="RSS-ify ParserAPI",
+    title="ParserAPI",
     description="AI-powered feed parser supporting RSS, Atom, JSON feeds, and intelligent HTML parsing",
-    version="4.0.0"
+    version="4.0.0",
+    redoc_url=None
 )
 
 USER_AGENT = os.getenv('UA')
@@ -187,8 +188,7 @@ async def root():
         "endpoints": {
             "/parse": "Parse a feed from URL (GET)",
             "/health": "Health check (GET)",
-            "/docs": "Interactive API documentation (Swagger UI)",
-            "/redoc": "Alternative API documentation (ReDoc)"
+            "/docs": "Interactive API documentation (Swagger UI)"
         },
         "usage": {
             "example": "/parse?url=https://example.com"
