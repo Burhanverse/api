@@ -24,20 +24,51 @@ parserapi = FastAPI(
     redoc_url=None
 )
 
-USER_AGENT = os.getenv('UA')
+USER_AGENT = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/134.0.0.0 Safari/537.36'
 
 def fetch_url(url):
-    """Fetch URL with error handling"""
-    try:
-        response = requests.get(
-            url,
-            headers={'User-Agent': USER_AGENT},
-            timeout=10
-        )
-        response.raise_for_status()
-        return response
-    except Exception as e:
-        raise ValueError(f"URL fetch failed: {str(e)}")
+    """Fetch URL with error handling and retry logic"""
+    headers_list = [
+        {
+            'User-Agent': USER_AGENT,
+            'Accept': 'application/rss+xml, application/xml, application/atom+xml, text/xml, */*',
+            'Accept-Language': 'en-US,en;q=0.9',
+            'Accept-Encoding': 'gzip, deflate',
+            'Connection': 'keep-alive',
+            'Cache-Control': 'no-cache'
+        },
+        {
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
+            'Accept': '*/*'
+        },
+        {
+            'User-Agent': 'curl/7.68.0',
+            'Accept': '*/*'
+        }
+    ]
+    
+    last_error = None
+    for headers in headers_list:
+        try:
+            response = requests.get(
+                url,
+                headers=headers,
+                timeout=15,
+                allow_redirects=True
+            )
+            response.raise_for_status()
+            return response
+        except requests.exceptions.HTTPError as e:
+            last_error = e
+            if e.response.status_code != 403:
+                raise ValueError(f"URL fetch failed: {str(e)}")
+            # Try next headers on 403
+            continue
+        except Exception as e:
+            raise ValueError(f"URL fetch failed: {str(e)}")
+    
+    # If all attempts failed with 403
+    raise ValueError(f"URL fetch failed with 403 Forbidden after trying multiple user agents")
 
 def detect_content_type(response):
     """Detect the content type of the response"""
