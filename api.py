@@ -1,6 +1,6 @@
 """
 FastAPI implementation with ScrapeGraphAI-based HTML parser
-AI-powered content extraction using Google Gemini
+AI-powered content extraction using Ollama (TinyLlama)
 """
 
 from fastapi import FastAPI, Query, HTTPException
@@ -18,13 +18,12 @@ import os
 from typing import Optional
 
 parserapi = FastAPI(
-    title="RSS Parser API",
+    title="RSS-ify ParserAPI",
     description="AI-powered feed parser supporting RSS, Atom, JSON feeds, and intelligent HTML parsing",
-    version="2.0.0"
+    version="4.0.0"
 )
 
 USER_AGENT = os.getenv('UA')
-GEMINI_API_KEY = os.getenv('GEMINI_API_KEY')
 
 def fetch_url(url):
     """Fetch URL with error handling"""
@@ -85,20 +84,17 @@ def format_content(content, content_type='html'):
 
 @parserapi.get("/parse")
 async def parse_feed(
-    url: str = Query(..., description="The URL to parse"),
-    gemini_key: Optional[str] = Query(None, description="Optional Gemini API key")
+    url: str = Query(..., description="The URL to parse")
 ):
     """
     Parse a feed from the given URL.
     
     Supports:
     - RSS/Atom/JSON feeds
-    - AI-powered HTML parsing using ScrapeGraphAI + Gemini 2.5 Flash
+    - AI-powered HTML parsing using ScrapeGraphAI + Ollama (TinyLlama)
     
     Returns structured feed data with articles/posts.
     """
-    # Get Gemini API key from request or environment
-    api_key = gemini_key or GEMINI_API_KEY
 
     try:
         response = fetch_url(url)
@@ -108,18 +104,11 @@ async def parse_feed(
 
         if 'html' in content_type:
             # Use AI-powered HTML parser
-            if not api_key:
-                raise HTTPException(
-                    status_code=400,
-                    detail="Gemini API key required for HTML parsing. Set GEMINI_API_KEY or pass gemini_key parameter."
-                )
-            
             final_feed = htmlparser.parse_html_to_feed(
                 response.content.decode('utf-8', errors='ignore'), 
-                url,
-                gemini_api_key=api_key
+                url
             )
-            source = "AI HTML parser (Gemini 2.5 Flash)"
+            source = "AI HTML parser (Ollama - TinyLlama)"
         else:
             # Try parsing as XML or JSON
             try:
@@ -131,16 +120,9 @@ async def parse_feed(
                     raise ValueError("Unsupported content type")
             except Exception as e:
                 # Fallback to AI HTML parser
-                if not api_key:
-                    raise HTTPException(
-                        status_code=400,
-                        detail="Gemini API key required for HTML parsing. Set GEMINI_API_KEY or pass gemini_key parameter."
-                    )
-                
                 final_feed = htmlparser.parse_html_to_feed(
                     response.content.decode('utf-8', errors='ignore'),
-                    url,
-                    gemini_api_key=api_key
+                    url
                 )
                 source = "AI HTML parser (fallback)"
 
@@ -217,7 +199,7 @@ async def root():
     return {
         "name": "ParserAPI",
         "version": "4.0.0",
-        "description": "AI-powered feed parser with Gemini",
+        "description": "AI-powered feed parser with Ollama (TinyLlama)",
         "endpoints": {
             "/parse": "Parse a feed from URL (GET)",
             "/health": "Health check (GET)",
@@ -225,7 +207,6 @@ async def root():
             "/redoc": "Alternative API documentation (ReDoc)"
         },
         "usage": {
-            "example": "/parse?url=https://example.com",
-            "with_api_key": "/parse?url=https://example.com&gemini_key=your-key"
+            "example": "/parse?url=https://example.com"
         }
     }

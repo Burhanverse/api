@@ -1,6 +1,6 @@
 # HTML Parser Module
 
-Modular AI-powered HTML parser using ScrapeGraphAI and Google Gemini.
+Modular AI-powered HTML parser using ScrapeGraphAI and Ollama (TinyLlama).
 
 ## Structure
 
@@ -20,27 +20,25 @@ htmlparser/
 Create a `.env` file in the project root:
 
 ```bash
-# Gemini API Configuration
-GEMINI_API_KEY=your-api-key-here
-GEMINI_MODEL=gemini-pro
+# Ollama Configuration
+OLLAMA_BASE_URL=http://localhost:11434
+OLLAMA_MODEL=tinyllama:1.1b
 
 # Parser Settings
-PARSER_VERBOSE=false          # Enable verbose logging
-PARSER_HEADLESS=true          # Run browser in headless mode
-PARSER_TIMEOUT=30             # Parsing timeout in seconds
-PARSER_MAX_ARTICLES=20        # Maximum articles to extract
+PARSER_MAX_ARTICLES=2        # Maximum articles to extract
+UA=rssify/36 +https://burhanverse.eu.org/
 ```
 
 ### Configuration via Code
 
 ```python
-from parserapi.htmlparser import ParserConfig
+from htmlparser import ParserConfig
 
 config = ParserConfig()
 
 # Access configuration
-api_key = config.gemini_api_key
-model = config.gemini_model
+base_url = config.ollama_base_url
+model = config.ollama_model
 max_articles = config.max_articles
 ```
 
@@ -49,37 +47,37 @@ max_articles = config.max_articles
 ### Basic Usage
 
 ```python
-from parserapi.htmlparser import parse_html_to_feed
+from htmlparser import parse_html_to_feed
 
 # Parse HTML content
 feed = parse_html_to_feed(html_content, base_url)
 ```
 
-### With Custom API Key
+### With Custom Ollama Settings
 
 ```python
-from parserapi.htmlparser import parse_html_to_feed
+from htmlparser import parse_html_to_feed
 
 feed = parse_html_to_feed(
     html_content, 
     base_url,
-    gemini_api_key='your-key'
+    ollama_base_url='http://localhost:11434',
+    ollama_model='tinyllama:1.1b'
 )
 ```
 
-### Using Different Prompts
+### Advanced Usage
 
 ```python
-from parserapi.htmlparser import parse_html_to_feed
+from htmlparser import ScrapeGraphHTMLParser
 
-# For news sites
-feed = parse_html_to_feed(
-    html_content, 
-    base_url,
-    prompt_type='news'
+# Create parser with custom settings
+parser = ScrapeGraphHTMLParser(
+    ollama_base_url='http://localhost:11434',
+    ollama_model='tinyllama:1.1b'
 )
 
-# For blogs
+# Parse HTML
 feed = parse_html_to_feed(
     html_content, 
     base_url,

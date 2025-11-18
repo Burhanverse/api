@@ -2,35 +2,31 @@
 
 ## ⚡ 5-Minute Setup
 
-### 1. Install Dependencies (2 minutes)
+### 1. Run Setup Script (3 minutes)
 
 ```bash
 cd /home/aqua/Documents/github/api
-fish setup.fish
+bash setup.sh
 ```
+
+This will:
+- Install Python dependencies
+- Install Playwright browsers
+- Install and configure Ollama
+- Download TinyLlama model
+- Start the API server
 
 Or manually:
 ```bash
-pip install -r parserapi/requirements.txt
-playwright install
+pip install -r requirements.txt
+playwright install chromium
+# Install Ollama separately
 ```
 
-### 2. Get API Key (1 minute)
-
-1. Visit: https://makersuite.google.com/app/apikey
-2. Click "Create API Key"
-3. Copy the key
-
-### 3. Set API Key (30 seconds)
+### 2. Start Server (if not auto-started)
 
 ```bash
-set -x GEMINI_API_KEY 'paste-your-key-here'
-```
-
-### 4. Start Server (30 seconds)
-
-```bash
-python -m parserapi
+python -m uvicorn api:parserapi --host 0.0.0.0 --port 2058
 ```
 
 ### 5. Test It! (1 minute)
@@ -93,13 +89,13 @@ GET /
 curl "http://localhost:5000/parse?url=https://www.bbc.com/news"
 
 # Tech blog
-curl "http://localhost:5000/parse?url=https://techcrunch.com"
+curl "http://localhost:2058/parse?url=https://techcrunch.com"
 
 # Personal blog
-curl "http://localhost:5000/parse?url=https://medium.com"
+curl "http://localhost:2058/parse?url=https://medium.com"
 
-# With API key in request
-curl "http://localhost:5000/parse?url=https://example.com&gemini_key=your-key"
+# Any website
+curl "http://localhost:2058/parse?url=https://example.com"
 ```
 
 ## 🐍 Use in Python
@@ -145,16 +141,16 @@ curl http://localhost:5000/
 ## 🐛 Common Issues
 
 ### "Connection refused"
-→ Server not running. Start with: `python -m parserapi`
+→ Server not running. Start with: `bash setup.sh`
 
-### "Gemini API key required"
-→ Set your API key: `set -x GEMINI_API_KEY 'your-key'`
+### "Ollama not found"
+→ Run setup script: `bash setup.sh` to install Ollama
 
 ### "Import error"
-→ Install deps: `pip install -r parserapi/requirements.txt`
+→ Install deps: `pip install -r requirements.txt`
 
 ### Slow responses
-→ First request is slower (AI loading). Subsequent requests are faster.
+→ First request is slower (AI model loading). Subsequent requests are faster.
 
 ## 🎓 Learn More
 

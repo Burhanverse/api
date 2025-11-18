@@ -1,5 +1,5 @@
 """
-HTML Parser Module - AI-powered feed extraction using ScrapeGraphAI + Gemini
+HTML Parser Module - AI-powered feed extraction using ScrapeGraphAI + Ollama (TinyLlama)
 
 Simple usage:
     from parserapi.htmlparser import parse_html_to_feed
