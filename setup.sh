@@ -4,7 +4,8 @@
 
 set -e
 
-export PATH="$HOME/.local/bin:$PATH"
+export PATH="$HOME/ollama/bin:$PATH"
+export LD_LIBRARY_PATH="$HOME/ollama/lib:$LD_LIBRARY_PATH"
 
 echo "🚀 Setting up Parser with Ollama"
 
@@ -29,14 +30,14 @@ $PYTHON_CMD -m playwright install chromium
 # Install Ollama if not present (user-level installation for Pterodactyl)
 if ! command -v ollama &> /dev/null; then
     echo "Installing Ollama..."
-    mkdir -p $HOME/.local/bin
-    TEMP_DIR=$(mktemp -d)
-    curl -fsSL https://github.com/ollama/ollama/releases/download/v0.12.11/ollama-linux-amd64.tgz -o "$TEMP_DIR/ollama.tgz"
-    tar -xzf "$TEMP_DIR/ollama.tgz" -C "$TEMP_DIR"
-    mv "$TEMP_DIR/bin/ollama" $HOME/.local/bin/ollama 
-    chmod +x $HOME/.local/bin/ollama
-    export PATH="$HOME/.local/bin:$PATH"
-    echo "✓ Ollama installed to $HOME/.local/bin/ollama"
+    mkdir -p $HOME/ollama
+    curl -fsSL https://github.com/ollama/ollama/releases/download/v0.12.11/ollama-linux-amd64.tgz -o "$HOME/ollama/ollama.tgz"
+    tar -xzf "$HOME/ollama/ollama.tgz" -C "$HOME/ollama"
+    rm -f "$HOME/ollama/ollama.tgz"
+    chmod +x $HOME/ollama/bin/ollama
+    export PATH="$HOME/ollama/bin:$PATH"
+    export LD_LIBRARY_PATH="$HOME/ollama/lib:$LD_LIBRARY_PATH"
+    echo "✓ Ollama installed to $HOME/ollama"
 fi
 
 # Start Ollama in background if not running
