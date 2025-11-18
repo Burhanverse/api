@@ -35,8 +35,8 @@ class ParserConfig:
     
     @property
     def ollama_model(self) -> str:
-        """Get Ollama model (default: llama3.2:3b)"""
-        return os.getenv('OLLAMA_MODEL', 'llama3.2:3b')
+        """Get Ollama model (default: tinyllama:1.1b)"""
+        return os.getenv('OLLAMA_MODEL', 'tinyllama:1.1b')
     
     @property
     def max_articles(self) -> int:

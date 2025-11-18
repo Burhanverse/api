@@ -47,10 +47,10 @@ if ! curl -s http://localhost:11434/api/tags &> /dev/null; then
     sleep 3
 fi
 
-# Pull llama3.2:3b model
-if ! ollama list | grep -q "llama3.2:3b"; then
-    echo "Pulling llama3.2:3b model..."
-    ollama pull llama3.2:3b
+# Pull tinyllama:1.1b model
+if ! ollama list | grep -q "tinyllama:1.1b"; then
+    echo "Pulling tinyllama:1.1b model..."
+    ollama pull tinyllama:1.1b
 fi
 
 echo ""
