@@ -47,11 +47,10 @@ if ! curl -s http://localhost:11434/api/tags &> /dev/null; then
     sleep 3
 fi
 
-# Pull tinyllama:1.1b model
-if ! ollama list | grep -q "tinyllama:1.1b"; then
-    echo "Pulling tinyllama:1.1b model..."
-    ollama pull tinyllama:1.1b
-fi
+# Run tinyllama:1.1b model (auto-pulls if missing)
+echo "Starting tinyllama:1.1b model..."
+ollama run tinyllama:1.1b "" &>/dev/null &
+sleep 2
 
 echo ""
 echo "✅ Setup complete!"
