@@ -14,6 +14,7 @@ from lxml import etree
 from minify_html import minify
 from emoji import demojize
 from datetime import datetime
+from html import unescape
 import os
 from typing import Optional
 
@@ -120,9 +121,37 @@ def extract_title(entry):
     from urllib.parse import urlparse, unquote
     import re
     
-    # Try direct title field
-    if entry.get('title') and entry.get('title').strip():
-        return entry.get('title').strip()
+    def clean_title(raw_value):
+        if not raw_value:
+            return None
+        text = unescape(raw_value)
+        text = re.sub(r'\s+', ' ', text).strip()
+        if 5 <= len(text) <= 200:
+            return text
+        return None
+
+    # Try direct title-like fields first
+    candidate_fields = [
+        entry.get('title'),
+        entry.get('media_title'),
+        entry.get('summary_title'),
+        entry.get('itunes_title'),
+        entry.get('summary'),
+        entry.get('description')
+    ]
+
+    title_detail = entry.get('title_detail')
+    if isinstance(title_detail, dict):
+        candidate_fields.append(title_detail.get('value'))
+
+    summary_detail = entry.get('summary_detail')
+    if isinstance(summary_detail, dict):
+        candidate_fields.append(summary_detail.get('value'))
+
+    for field in candidate_fields:
+        candidate = clean_title(field)
+        if candidate:
+            return candidate
     
     def extract_from_html(html_content):
         """Extract title from HTML content"""
@@ -131,14 +160,45 @@ def extract_title(entry):
             
         try:
             tree = lxml_html.fromstring(html_content)
+
+            # Priority 0: look for explicit metadata titles
+            meta_paths = [
+                '//meta[@property="og:title"]/@content',
+                '//meta[@name="og:title"]/@content',
+                '//meta[@name="twitter:title"]/@content',
+                '//meta[@property="twitter:title"]/@content',
+                '//meta[@name="title"]/@content'
+            ]
+            for path in meta_paths:
+                for value in tree.xpath(path):
+                    title = clean_title(value)
+                    if title:
+                        return title
+
+            # Priority 0.5: document title element
+            doc_title = clean_title(tree.xpath('string(//title)'))
+            if doc_title:
+                return doc_title
+
+            # Priority 1: attribute-based hints
+            attr_selectors = [
+                'string(//*[@aria-label][1]/@aria-label)',
+                'string(//*[@data-title][1]/@data-title)',
+                'string(//*[@title][1]/@title)'
+            ]
+            for selector in attr_selectors:
+                value = tree.xpath(selector)
+                title = clean_title(value)
+                if title:
+                    return title
             
             # Priority 1: Try all heading tags directly (h1-h6)
             for tag in ['h1', 'h2', 'h3', 'h4', 'h5', 'h6']:
                 headings = tree.xpath(f'.//{tag}')
                 for h in headings:
-                    text = h.text_content().strip()
-                    if text and 10 < len(text) < 200:
-                        return text
+                    title = clean_title(h.text_content())
+                    if title:
+                        return title
             
             # Priority 2: Try common title class names
             title_classes = [
@@ -151,9 +211,9 @@ def extract_title(entry):
             for xpath in title_classes:
                 elements = tree.xpath(xpath)
                 for elem in elements:
-                    text = elem.text_content().strip()
-                    if text and 10 < len(text) < 200:
-                        return text
+                    title = clean_title(elem.text_content())
+                    if title:
+                        return title
             
             # Priority 3: Look inside article/post containers
             containers = tree.xpath('//article | //*[contains(@class, "post")] | //*[contains(@class, "entry")] | //*[contains(@class, "story")]')
@@ -162,9 +222,14 @@ def extract_title(entry):
                 for tag in ['h1', 'h2', 'h3', 'h4', 'h5', 'h6']:
                     headings = container.xpath(f'.//{tag}')
                     for h in headings:
-                        text = h.text_content().strip()
-                        if text and 10 < len(text) < 200:
-                            return text
+                        title = clean_title(h.text_content())
+                        if title:
+                            return title
+
+            # Priority 3.5: first substantial paragraph text
+            paragraph = clean_title(tree.xpath('string(//p[normalize-space()][1])'))
+            if paragraph:
+                return paragraph
             
             # Priority 4: Get first substantial text (fallback)
             text = tree.text_content().strip()
@@ -174,11 +239,15 @@ def extract_title(entry):
                 # Try to get first sentence
                 sentences = re.split(r'[.!?]\s+', text)
                 for sentence in sentences:
-                    if 10 < len(sentence) < 150:
-                        return sentence
+                    title = clean_title(sentence)
+                    if title:
+                        return title
                 # Or just first 100 chars
                 if len(text) > 10:
-                    return text[:100].strip() + ('...' if len(text) > 100 else '')
+                    snippet = text[:100].strip() + ('...' if len(text) > 100 else '')
+                    title = clean_title(snippet)
+                    if title:
+                        return title
         except Exception as e:
             pass
         
@@ -191,6 +260,18 @@ def extract_title(entry):
         if title:
             return title
     
+    # Try explicit HTML fields returned by scrapers
+    html_fields = [
+        entry.get('content_html'),
+        entry.get('summary_html'),
+        entry.get('standfirst'),
+        entry.get('description_html')
+    ]
+    for html_field in html_fields:
+        title = extract_from_html(html_field)
+        if title:
+            return title
+
     # Try content field
     content_list = entry.get('content', [])
     if isinstance(content_list, list) and content_list:
@@ -199,6 +280,10 @@ def extract_title(entry):
             title = extract_from_html(content)
             if title:
                 return title
+    elif isinstance(content_list, str):
+        title = extract_from_html(content_list)
+        if title:
+            return title
     
     # Try extracting from URL as last resort
     link = entry.get('link', '')
@@ -216,8 +301,9 @@ def extract_title(entry):
                     title = title.replace('_', ' ').replace('-', ' ')
                     # Remove numbers at start if present
                     title = re.sub(r'^\d+\s*', '', title)
-                    if len(title) > 10:
-                        return title.title()
+                    title = clean_title(title.title())
+                    if title:
+                        return title
         except:
             pass
     
