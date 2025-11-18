@@ -116,29 +116,51 @@ def format_content(content, content_type='html'):
 
 def extract_title(entry):
     """Extract title from entry with multiple fallbacks"""
+    from lxml import html as lxml_html
+    from urllib.parse import urlparse, unquote
+    
     # Try direct title field
     if entry.get('title') and entry.get('title').strip():
         return entry.get('title').strip()
     
-    # Try summary/description
+    # Article selectors to find title in HTML content
+    selectors = [
+        'article',
+        '[itemtype*="Article"]',
+        '[class*="post"]',
+        '[id*="post"]',
+        '[class*="article"]',
+        '[class*="articles"]',
+        '[id*="article"]',
+        '[class*="entry"]',
+        '[id*="entry"]',
+        '[class*="story"]',
+        '[id*="story"]',
+        '[role="article"]'
+    ]
+    
+    # Try summary/description with CSS selectors
     summary = entry.get('summary', '') or entry.get('description', '')
     if summary:
-        # Extract first line or sentence
-        from html.parser import HTMLParser
-        
-        class HTMLTextExtractor(HTMLParser):
-            def __init__(self):
-                super().__init__()
-                self.text = []
-            def handle_data(self, data):
-                self.text.append(data)
-        
-        parser = HTMLTextExtractor()
         try:
-            parser.feed(summary)
-            text = ' '.join(parser.text).strip()
+            tree = lxml_html.fromstring(summary)
+            
+            # Try to find title using selectors
+            for selector in selectors:
+                elements = tree.cssselect(selector)
+                if elements:
+                    # Look for h1, h2, h3, or title-like elements
+                    for elem in elements:
+                        for heading in ['h1', 'h2', 'h3', '.title', '[class*="title"]', '[class*="headline"]']:
+                            title_elem = elem.cssselect(heading)
+                            if title_elem:
+                                text = title_elem[0].text_content().strip()
+                                if len(text) > 10 and len(text) < 200:
+                                    return text
+            
+            # Fallback to plain text extraction
+            text = tree.text_content().strip()
             if text:
-                # Get first sentence or first 100 chars
                 first_sentence = text.split('.')[0].strip()
                 if len(first_sentence) > 10 and len(first_sentence) < 150:
                     return first_sentence
@@ -147,13 +169,26 @@ def extract_title(entry):
         except:
             pass
     
-    # Try content field
+    # Try content field with CSS selectors
     content = entry.get('content', [{}])[0].get('value', '') if isinstance(entry.get('content', []), list) else ''
     if content:
         try:
-            parser = HTMLTextExtractor()
-            parser.feed(content)
-            text = ' '.join(parser.text).strip()
+            tree = lxml_html.fromstring(content)
+            
+            # Try to find title using selectors
+            for selector in selectors:
+                elements = tree.cssselect(selector)
+                if elements:
+                    for elem in elements:
+                        for heading in ['h1', 'h2', 'h3', '.title', '[class*="title"]', '[class*="headline"]']:
+                            title_elem = elem.cssselect(heading)
+                            if title_elem:
+                                text = title_elem[0].text_content().strip()
+                                if len(text) > 10 and len(text) < 200:
+                                    return text
+            
+            # Fallback to plain text
+            text = tree.text_content().strip()
             if text:
                 first_sentence = text.split('.')[0].strip()
                 if len(first_sentence) > 10 and len(first_sentence) < 150:
@@ -166,18 +201,13 @@ def extract_title(entry):
     # Try extracting from URL
     link = entry.get('link', '')
     if link:
-        # Get the last part of URL and clean it up
-        from urllib.parse import urlparse, unquote
         path = urlparse(link).path
         if path:
-            # Get last segment
             segments = [s for s in path.split('/') if s]
             if segments:
                 title = segments[-1]
-                # Clean up common patterns
                 title = unquote(title)
                 title = title.replace('_', ' ').replace('-', ' ')
-                # Remove file extensions
                 title = title.rsplit('.', 1)[0] if '.' in title else title
                 if len(title) > 10:
                     return title.title()
@@ -253,15 +283,30 @@ async def parse_feed(
             reverse=True
         )
 
-        # Format response - return simplified structure
+        # Format items
         items = []
-        for entry in sorted_entries[:5]:  # Limit to top 5 items
+        for entry in sorted_entries[:5]:  # Return top 10 items
+            content = format_content(
+                getattr(entry, 'content', [{}])[0].get('value', '') or 
+                entry.get('content', [{}])[0].get('value', '') if isinstance(entry.get('content', []), list) and entry.get('content') else
+                entry.get('summary', ''),
+                'html'
+            )
+
             items.append({
-                'title': extract_title(entry),
-                'link': entry.get('link', '')
+                "title": extract_title(entry),
+                "link": entry.get('link', ''),
+                "published": entry.get('published', entry.get('date', '')),
+                "summary": format_content(entry.get('summary', ''), 'text'),
+                "author": entry.get('author', 'Unknown'),
+                "categories": [tag.get('term') for tag in entry.get('tags', [])],
+                "content": content
             })
-        
-        return items
+
+        return {
+            "items": items,
+            "source": feed_metadata
+        }
 
     except HTTPException:
         raise
